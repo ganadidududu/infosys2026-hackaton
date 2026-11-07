@@ -147,12 +147,15 @@ def draft_opinions(findings: list[dict]) -> list[dict]:
         1: [f for f in bad if f["clause"] in {"3부 7조", "3부 8조", "3부 9조", "3부 18조", "3부 27조"}],
         2: [f for f in bad if f["clause"] in {"3부 10조", "3부 11조", "3부 12조", "3부 13조", "3부 14조", "3부 17조"}],
     }
+    label = {"3부 35조": "계산서 산출 근거 누락", "3부 31조": "카드 전표 세목 누락", "3부 32조": "현금영수증 세목 누락",
+             "3부 8조": "할부 결제", "3부 9조": "포인트 적립", "3부 27조": "전용 산출 근거 누락", "3부 18조": "축제 통장 미승인",
+             "3부 13조": "참가비가 지출을 초과", "3부 12조": "수입 구분 미확인", "3부 40조": "사업개요서 대상란", "3부 42조": "사업내용 부실"}
     ops = []
     for i in range(3):
         g = groups[i]
         if g:
-            txt = ", ".join(sorted({f"{f['project']} {f['clause']}" for f in g}))
-            ops.append({"key": OPINION_KEYS[i], "grade": "미흡", "text": f"지적 사항: {txt}."})
+            txt = ", ".join(f"{f['project']} {label.get(f['clause'], '')}({f['clause']})".replace(" (", "(") for f in sorted(g, key=lambda x: x["clause"]))
+            ops.append({"key": OPINION_KEYS[i], "grade": "미흡", "text": f"{txt}이(가) 확인되었습니다."})
         else:
             ops.append({"key": OPINION_KEYS[i], "grade": "양호", "text": "중요한 지적 사항이 없습니다."})
     n_bad = sum(1 for o in ops if o["grade"] == "미흡")
