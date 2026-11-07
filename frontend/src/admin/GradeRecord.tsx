@@ -120,7 +120,15 @@ function SlotRow({ s, rid, reload, compact }: any) {
 }
 
 // 모의 채점 2단계 (시안 v8): 좌 점수+제출 서류 · 중 감점 항목 · 우 서류(문제 줄에 말풍선)
-const GROUPS = ['사업개요서', '장부 · 내역서 · 증빙', '통장 · 학과 전체']
+// 묶음 = 걸린 조항이 속한 기준안 3부의 장
+const GROUPS = ['사업개요서', '수입 · 지출', '증빙', '내역서 · 장부', '제출 · 공시', '기타']
+const CHAPTER: Record<string, number> = {
+  '사업개요서 작성': 0,
+  '회계총칙': 1, '수입': 1, '지출': 1, '축제 회계': 1, '기타 특수 회계': 1,
+  '수입의 증빙': 2, '지출의 증빙': 2,
+  '수입/지출내역서 작성': 3, '장부 작성': 3,
+  '감사자료의 제출 및 공시': 4,
+}
 
 function penalty(f: any): [string, string] {
   if (f.verdict === '확인 필요') return ['확인', 'q']
@@ -139,14 +147,8 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   const { data: kijun } = useApi<any[]>('/kijun')
   const clauseText = useMemo(() => Object.fromEntries((kijun ?? []).map((c: any) => [c.id, c])), [kijun])
   const checksBy = useMemo(() => Object.fromEntries(data.checks.map((c: any) => [c.id, c])), [data.checks])
-  const docKind = useMemo(() => { const m: Record<string, string> = {}; packets.forEach((p) => p.documents.forEach((d: any) => { m[d.id] = d.kind })); return m }, [packets])
   const issues = all.filter((f) => f.verdict !== '충족')
-  const groupOf = (f: any) => {
-    const kinds = (f.evidence ?? []).map((e: any) => docKind[e.doc])
-    if (kinds.includes('사업개요서')) return 0
-    if (f.packet === 'ALL' || kinds.includes('통장사본') || kinds.length === 0) return 2
-    return 1
-  }
+  const groupOf = (f: any) => CHAPTER[titles[f.clause]] ?? 5
   const pidNo = (pid: string) => (pid === 'ALL' ? 0 : +pid.slice(1))
   const loc = (f: any) => f.checks.map((c: string) => checksBy[c]?.target).find(Boolean) ?? (f.packet === 'ALL' ? '전체' : `사업 ${pidNo(f.packet)}`)
   const short = (f: any) => headline(f, titles, f.checks.map((c: string) => checksBy[c]?.message).find(Boolean))
