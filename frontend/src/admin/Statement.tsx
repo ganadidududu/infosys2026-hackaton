@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
 import { api, useApi, won } from '../api'
+import type React from 'react'
 import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 import Receipts from './Receipts'
 
@@ -11,25 +12,11 @@ export default function Statement() {
   const { data, error, reload } = useApi('/statement')
   if (error) return <ErrorBox msg={error} />
   if (!data) return <Loading />
-  const csv = data.csv
-  const steps: [Tab, string, string][] = [
-    ['receipts', '영수증 OCR·저장', `증빙 ${Object.keys(data.statement.receipts).length}장 · 대사 ${data.statement.counts['자동 확정'] + data.statement.counts['확인 필요']}건`],
-    ['convert', '거래 장부 → 수입/지출내역서(Word)', `${csv.source === 'sample' ? '예시 장부' : csv.filename} · ${data.statement.rows.length}페이지`],
-  ]
   return (
     <>
-      <div className="ph">
-        <div><div className="crumb">(수입·지출) 내역서</div><h1>영수증과 거래 장부로 학기말 내역서 만들기</h1>
-          <p>기중 거래 장부(엑셀·CSV)를 올리면 열을 자동으로 맞춰, 거래 1건마다 한 페이지인 수입/지출내역서(Word)로 바꿉니다 <Cite c="3부 49조" />.</p></div>
-        <a className="btn b" href="/api/export/statement.docx">수입/지출내역서 .docx 받기</a>
-      </div>
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-        {steps.map(([k, l, s], i) => (
-          <button key={k} onClick={() => setTab(k)} className="card" style={{ textAlign: 'left', padding: '14px 16px', cursor: 'pointer', borderColor: tab === k ? 'var(--brand)' : 'var(--line)', boxShadow: tab === k ? '0 0 0 3px var(--brand-soft)' : undefined }}>
-            <div className="row" style={{ gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 7, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, background: tab === k ? 'var(--brand)' : 'var(--gray-soft)', color: tab === k ? '#fff' : 'var(--mute)' }}>{i + 1}</span><b style={{ fontSize: 14 }}>{l}</b></div>
-            <div className="xs muted" style={{ marginTop: 6, paddingLeft: 30 }}>{s}</div>
-          </button>
-        ))}
+      <div className="subtabs">
+        <button className={tab === 'receipts' ? 'on' : ''} onClick={() => setTab('receipts')}><i>1</i>영수증 OCR·저장</button>
+        <button className={tab === 'convert' ? 'on' : ''} onClick={() => setTab('convert')}><i>2</i>거래 장부 → 수입/지출내역서(Word)</button>
       </div>
       {tab === 'receipts' && <Receipts embedded />}
       {tab === 'convert' && <Convert data={data} reload={reload} />}
@@ -46,14 +33,21 @@ function Convert({ data, reload }: any) {
   const ref = useRef<HTMLInputElement>(null)
   const toast = useToast()
   const [drag, setDrag] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [page, setPage] = useState(0)
   const idx = Math.min(page, Math.max(0, rows.length - 1))
   const cur = rows[idx]
   const pageOfRow = (r: number) => rows.findIndex((x) => x.src_row === r)
 
-  async function up(file: File) {
-    const fd = new FormData(); fd.append('file', file)
+  async function up(file: File | Blob, name?: string) {
+    setBusy(true)
+    const fd = new FormData(); fd.append('file', file, name ?? (file as File).name)
     try { const r = await api('/statement/upload', { body: fd }); toast(r.errors.length ? '일부 열을 직접 지정해야 합니다' : '열을 자동으로 맞췄습니다'); setPage(0); reload() } catch (e: any) { toast(e.message, true) }
+    setBusy(false)
+  }
+  async function trySample() {
+    const b = await (await fetch('/api/statement/sample.csv')).blob()
+    up(b, '기중거래장부_예시.csv')
   }
   async function setCol(col: number, field: string) {
     const body: any = {}
@@ -62,38 +56,42 @@ function Convert({ data, reload }: any) {
     if (field) body[field] = col
     await api('/statement/mapping', { body }); reload()
   }
-  const fieldOf = (j: number) => Object.entries(csv.mapping ?? {}).find(([, v]: any) => v.col === j) as any
+  const fieldOf = (j: number) => Object.entries(csv?.mapping ?? {}).find(([, v]: any) => v.col === j) as any
   useEffect(() => { document.querySelector('tr.src-sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [idx])
+  const dropProps = {
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDrag(true) },
+    onDragLeave: () => setDrag(false),
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) up(f) },
+  }
 
   return (
-    <div className="grid" style={{ gap: 12 }}>
-      {/* 파일 줄 */}
-      <div className="card" onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) up(f) }}
-        style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderStyle: 'dashed', background: drag ? 'var(--brand-soft)' : undefined }}>
-        <input ref={ref} type="file" accept=".xlsx,.xlsm,.csv,.txt" hidden onChange={(e) => { if (e.target.files?.[0]) up(e.target.files[0]); e.target.value = '' }} />
-        <span style={{ fontSize: 22 }}>📊</span>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <b className="small">{csv.filename}</b> {csv.source === 'sample' && <span className="tag t-a">예시</span>}
-          <div className="xs muted">{csv.body.length}행 · 변환 {csv.parsed}건{csv.skipped.length ? ` · 건너뜀 ${csv.skipped.length}` : ''} · 엑셀(.xlsx)·CSV를 끌어다 놓아도 됩니다</div>
-        </div>
-        {csv.errors.length ? <span className="tag t-r">{csv.errors.join(' · ')}</span> : <span className="tag t-g">열 매핑 완료</span>}
-        <a className="btn sm" href="/api/statement/sample.csv">예시 장부</a>
-        {csv.source === 'upload' && <button className="btn sm" onClick={async () => { await api('/statement', { method: 'DELETE' }); setPage(0); reload() }}>예시로 되돌리기</button>}
-        <button className="btn sm p" onClick={() => ref.current?.click()}>장부 올리기</button>
-      </div>
-
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', alignItems: 'start', gap: 12 }}>
-        {/* 왼쪽: 엑셀 원본 */}
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', justifyContent: 'space-between' }}>
-            <b className="small">원본 장부</b><span className="xs muted">맨 위 칸에서 열 매핑을 바꿀 수 있어요 · 행을 누르면 오른쪽 페이지로</span>
+    <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', alignItems: 'start', gap: 12 }}>
+      <input ref={ref} type="file" accept=".xlsx,.xlsm,.csv,.txt" hidden onChange={(e) => { if (e.target.files?.[0]) up(e.target.files[0]); e.target.value = '' }} />
+      {/* 왼쪽: 원본 장부 */}
+      <div className="card" style={{ overflow: 'hidden' }} {...(csv ? dropProps : {})}>
+        <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', justifyContent: 'space-between', minHeight: 46 }}>
+          <div className="row" style={{ gap: 8, minWidth: 0 }}>
+            <b className="small">원본 장부</b>
+            {csv && <span className="xs muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{csv.filename} · {csv.body.length}행</span>}
+            {csv && (csv.errors.length ? <span className="tag t-r">{csv.errors[0]}</span> : <span className="tag t-g">열 매핑 완료</span>)}
           </div>
-          <div className="xl-wrap">
+          {csv && <button className="xbtn" title="장부 지우고 다시 올리기" onClick={async () => { await api('/statement', { method: 'DELETE' }); setPage(0); reload() }}>✕</button>}
+        </div>
+        {!csv ? (
+          <div {...dropProps} onClick={() => ref.current?.click()} className={`dropzone ${drag ? 'over' : ''}`}>
+            {busy ? <span className="spin" /> : <>
+              <div style={{ fontSize: 38, lineHeight: 1 }}>⤓</div>
+              <b style={{ marginTop: 12 }}>기중 거래 장부를 여기로 끌어다 놓으세요</b>
+              <span className="small muted" style={{ marginTop: 6 }}>또는 눌러서 파일 선택 · 엑셀(.xlsx)·CSV</span>
+              <button className="btn sm ghost" style={{ marginTop: 18, textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); trySample() }}>예시 장부로 해 보기</button>
+            </>}
+          </div>
+        ) : (
+          <div className="xl-wrap" style={drag ? { outline: '2px dashed var(--brand)', outlineOffset: -4 } : undefined}>
             <table className="xl">
               <thead>
                 <tr><th className="rn" />{csv.header.map((_: string, j: number) => <th key={j} className="cl">{COL(j)}</th>)}</tr>
-                <tr className="map"><th className="rn">↳</th>{csv.header.map((h: string, j: number) => {
+                <tr className="map"><th className="rn">↳</th>{csv.header.map((_: string, j: number) => {
                   const fm = fieldOf(j)
                   return (
                     <th key={j} className={fm ? 'on' : ''}>
@@ -116,23 +114,26 @@ function Convert({ data, reload }: any) {
               </tbody>
             </table>
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* 오른쪽: 변환된 Word 페이지 */}
-        <div className="card" style={{ background: '#e9edf3', overflow: 'hidden' }}>
-          <div className="row" style={{ padding: '8px 12px', justifyContent: 'space-between', background: '#fff', borderBottom: '1px solid var(--line)' }}>
+      {/* 오른쪽: 변환된 Word 페이지 */}
+      <div className="card" style={{ background: '#e9edf3', overflow: 'hidden' }}>
+        <div className="row" style={{ padding: '8px 12px', justifyContent: 'space-between', background: '#fff', borderBottom: '1px solid var(--line)', minHeight: 46 }}>
+          {rows.length ? (
             <div className="row" style={{ gap: 6 }}>
               <button className="btn sm" onClick={() => setPage(idx - 1)} disabled={idx === 0}>‹</button>
               <span className="small num" style={{ minWidth: 76, textAlign: 'center' }}><b>{idx + 1}</b> / {rows.length}쪽</span>
               <button className="btn sm" onClick={() => setPage(idx + 1)} disabled={idx >= rows.length - 1}>›</button>
-              {cur && <span className="xs muted">· {cur.code}{cur.src_row != null ? ` · 원본 ${cur.src_row + 2}행` : ' · 전용 처리(원본 행 없음)'}</span>}
+              {cur && <span className="xs muted">· {cur.code}{cur.src_row != null ? ` · 원본 ${cur.src_row + 2}행` : ' · 전용 처리'}</span>}
             </div>
-            <a className="btn sm b" href="/api/export/statement.docx">.docx 받기</a>
-          </div>
-          <div style={{ padding: 14, maxHeight: 'calc(100vh - 250px)', overflow: 'auto' }}>
-            {cur ? <FormPage row={cur} rc={(cur.rc ?? [])[0] ? data.statement.receipts[cur.rc[0]] : null} rid={(cur.rc ?? [])[0]} />
-              : <div className="empty">열 매핑을 마치면 변환된 페이지가 여기에 보여요.</div>}
-          </div>
+          ) : <b className="small">수입/지출내역서</b>}
+          {rows.length > 0 && <a className="btn sm b" href="/api/export/statement.docx">.docx 받기</a>}
+        </div>
+        <div style={{ padding: 14, maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}>
+          {cur ? <FormPage row={cur} rc={(cur.rc ?? [])[0] ? data.statement.receipts[cur.rc[0]] : null} rid={(cur.rc ?? [])[0]} />
+            : <div className="dropzone" style={{ cursor: 'default', borderColor: 'transparent', background: 'transparent' }}>
+                <span className="small muted">{csv ? '열 매핑을 마치면 변환된 페이지가 여기에 보여요.' : '장부를 올리면 거래마다 한 페이지씩 변환된 내역서가 여기에 보여요.'}</span></div>}
         </div>
       </div>
     </div>

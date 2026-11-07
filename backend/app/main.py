@@ -231,12 +231,12 @@ def statement_view():
     st = load_state()
     lc = st.get("ledger_csv")
     ds, led = ledger_now()
-    if lc:
-        text, fname, mapping, source = lc["text"], lc["filename"], lc["mapping"], "upload"
-    else:
-        text, fname, source = csv_import.sample_csv(DS), "기중거래장부_예시.csv", "sample"
-        h0, b0 = csv_import.read_rows(text)
-        mapping = csv_import.auto_map(h0, b0)
+    imgs = {f.stem for f in RECEIPT_IMG.glob("*")} if RECEIPT_IMG.exists() else set()
+    rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
+                     **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
+    if not lc:   # 아직 장부를 올리지 않음 → 원본 칸은 비워 둔다
+        return {"fields": csv_import.FIELDS, "csv": None, "statement": {"rows": [], "receipts": rcs, "counts": led["reconcile"]["counts"]}}
+    text, fname, mapping, source = lc["text"], lc["filename"], lc["mapping"], "upload"
     h, b = csv_import.read_rows(text)
     errs = csv_import.validate(mapping)
     ctx, sk = csv_import.to_transactions(h, b, mapping) if not errs else ([], [])
@@ -249,9 +249,6 @@ def statement_view():
     for r in rows:
         t = tx_by.get(r["tx"]) if r["tx"] else None
         r["src_row"] = key_to_row.get((t["date"], t["desc"], t["in"], t["out"])) if t else None
-    imgs = {f.stem for f in RECEIPT_IMG.glob("*")} if RECEIPT_IMG.exists() else set()
-    rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
-                     **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
     return {
         "fields": csv_import.FIELDS,
         "csv": {"filename": fname, "source": source, "header": h, "body": b, "mapping": mapping, "errors": errs,
