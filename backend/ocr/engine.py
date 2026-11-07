@@ -25,13 +25,24 @@ def engine_name() -> str | None:
     return ENGINE or None
 
 
+_READER = None
+
+
+def _reader():
+    """EasyOCR 모델은 한 번만 올린다(요청마다 만들면 수 초씩 걸린다)."""
+    global _READER
+    if _READER is None:
+        import easyocr
+        _READER = easyocr.Reader(["ko", "en"], gpu=False)
+    return _READER
+
+
 def read_image(data: bytes) -> str | None:
     name = engine_name()
     if name == "easyocr":
-        import easyocr
         import numpy as np
         from PIL import Image
-        reader = easyocr.Reader(["ko", "en"], gpu=False)
+        reader = _reader()
         img = np.array(Image.open(io.BytesIO(data)).convert("RGB"))
         return "\n".join(t for _, t, _ in reader.readtext(img))
     if name == "paddleocr":

@@ -1,0 +1,39 @@
+# EC2에서: docker compose up -d --build
+# - api: Auditon (포트는 밖으로 열지 않는다. 127.0.0.1에만 묶음)
+# - tunnel: Cloudflare Tunnel이 api로 트래픽을 넘긴다(보안 그룹에 80/443을 열 필요 없음)
+services:
+  api:
+    build:
+      context: .
+      args:
+        WITH_OCR: ${WITH_OCR:-1}
+        AUDITON_VERSION: ${AUDITON_VERSION:-dev}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./var:/data          # EBS 디스크. 상태 JSON·업로드 파일
+    ports:
+      - "127.0.0.1:8000:8000"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    # 도메인이 있으면 Cloudflare 대시보드에서 만든 터널 토큰으로 고정 주소 연결
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    profiles: ["tunnel"]
+
+  quick-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    # 도메인이 없을 때: 임시 주소(https://xxxx.trycloudflare.com). 재시작하면 주소가 바뀐다.
+    command: tunnel --no-autoupdate --url http://api:8000
+    profiles: ["quick"]

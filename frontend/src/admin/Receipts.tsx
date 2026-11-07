@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react'
-import { api, md, useApi, won } from '../api'
+import { api, md, useApi, won, apiUrl } from '../api'
 import { ErrorBox, Loading, useToast } from '../ui/ui'
 
 
@@ -76,7 +76,7 @@ function ReceiptDrawer({ r, close, reload }: any) {
             <div>
               <div className="sec-t">영수증 사진</div>
               <div style={{ background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 10, height: 420, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                {r.image ? <img src={`/api/receipts/${r.id}/image`} alt="영수증 원본" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                {r.image ? <img src={apiUrl(`/receipts/${r.id}/image`)} alt="영수증 원본" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                   : <span className="small muted">원본 사진이 없습니다</span>}
               </div>
             </div>

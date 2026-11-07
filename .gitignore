@@ -5,3 +5,5 @@ frontend/dist/
 backend/var/
 .venv/
 .DS_Store
+.env
+var/

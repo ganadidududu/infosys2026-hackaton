@@ -11,6 +11,8 @@ import os
 import re
 import sys
 import threading
+import time
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -35,11 +37,33 @@ DATASET = os.environ.get("AUDITON_DATASET", "tune")
 if DATASET == "eval" and os.environ.get("AUDITON_ALLOW_EVAL") != "1":
     raise SystemExit("평가용 세트는 개발 중 열지 않습니다. 최종 측정 때만 AUDITON_ALLOW_EVAL=1로 실행하세요.")
 DS_PATH = ROOT / "data" / "synthetic" / DATASET / "dataset.json"
-STATE_PATH = BACKEND / "var" / f"state-{DATASET}.json"
+VAR = Path(os.environ.get("AUDITON_VAR", str(BACKEND / "var")))  # 배포 시 EBS 볼륨(/data)
+STATE_PATH = VAR / f"state-{DATASET}.json"
 LOCK = threading.Lock()
 
 app = FastAPI(title="Auditon API", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# 운영에서는 AUDITON_CORS=https://auditon.pages.dev,https://도메인 처럼 화면 주소만 허용
+CORS = [o.strip() for o in os.environ.get("AUDITON_CORS", "*").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=CORS, allow_methods=["*"], allow_headers=["*"])
+STARTED = time.time()
+log = logging.getLogger("auditon")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+@app.middleware("http")
+async def access_log(request, call_next):
+    """요청 한 줄 로그(JSON). 본문·파일 내용은 남기지 않는다(개인정보)."""
+    t0 = time.perf_counter()
+    status = 500
+    try:
+        res = await call_next(request)
+        status = res.status_code
+        return res
+    finally:
+        path = request.url.path
+        if path.startswith("/api") and path != "/api/health":
+            log.info(json.dumps({"t": datetime.now().isoformat(timespec="seconds"), "m": request.method, "p": path,
+                                 "s": status, "ms": round((time.perf_counter() - t0) * 1000)}))
 
 
 def load_ds() -> dict:
@@ -56,8 +80,11 @@ def load_state() -> dict:
 
 
 def save_state(st: dict) -> None:
+    """원자 저장: 임시 파일에 쓴 뒤 rename. 쓰는 도중 서버가 죽어도 기존 상태가 깨지지 않는다."""
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp = STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, STATE_PATH)
 
 
 def dataset() -> dict:
@@ -82,6 +109,28 @@ def dataset() -> dict:
 def ledger_now():
     ds = dataset()
     return ds, build(ds, load_state())
+
+
+# ---------------- 헬스 체크 ----------------
+@app.get("/api/health")
+def health():
+    """도커·로드밸런서·모니터링용. 저장소에 쓸 수 있는지까지 확인한다."""
+    try:
+        VAR.mkdir(parents=True, exist_ok=True)
+        probe = VAR / ".probe"
+        probe.write_text("ok")
+        probe.unlink()
+        writable = True
+    except OSError:
+        writable = False
+    from core.kijun import KIJUN_MD
+    ok = writable and DS_PATH.exists() and KIJUN_MD.exists()
+    body = {"ok": ok, "version": os.environ.get("AUDITON_VERSION", "dev"), "dataset": DATASET,
+            "llm": llm_mode(), "ocr": ocr.engine_name(), "storage_writable": writable,
+            "uptime_s": round(time.time() - STARTED)}
+    if not ok:
+        raise HTTPException(503, detail=body)
+    return body
 
 
 # ---------------- 메타·기준안 ----------------
@@ -376,7 +425,7 @@ def receipt_edit(rid: str, body: dict = Body(...)):
     return {"ok": True}
 
 
-RECEIPT_IMG = BACKEND / "var" / "files" / "receipts"
+RECEIPT_IMG = VAR / "files" / "receipts"
 
 
 SAMPLE_IMG = ROOT / "data" / "synthetic" / DATASET / "receipts"
@@ -506,7 +555,7 @@ SLOTS = [
     {"key": "cover", "label": "표지·원본대조필", "hint": "자치기구명·회계기간·감사명칭", "required": True, "clause": "3부 63조"},
     {"key": "inquiry", "label": "질의·답변 기록", "hint": "선택", "required": False, "clause": "4부 15조"},
 ]
-FILES = BACKEND / "var" / "files"
+FILES = VAR / "files"
 
 
 def _past_records() -> list[dict]:

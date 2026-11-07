@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRef, useState } from 'react'
-import { api, useApi } from '../api'
+import { api, useApi, apiUrl } from '../api'
 import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 
 const WD = ['일', '월', '화', '수', '목', '금', '토']
@@ -57,7 +57,7 @@ export default function Checklist() {
             const fd = new FormData(); fd.append('file', f)
             try { const r = await api('/schedule/upload', { body: fd }); toast(`일정 ${r.added}건 추가${r.skipped.length ? ` · ${r.skipped.length}행 건너뜀` : ''}`); reload() } catch (err: any) { toast(err.message, true) }
             e.target.value = '' }} />
-          <a className="btn sm ghost" href="/api/schedule/sample.csv">일정 CSV 양식</a>
+          <a className="btn sm ghost" href={apiUrl('/schedule/sample.csv')}>일정 CSV 양식</a>
           <button className="btn" onClick={() => fileRef.current?.click()}>일정 CSV 올리기</button>
         </div>
       </div>

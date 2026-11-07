@@ -1,8 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useState } from 'react'
 
+// API 주소: 같은 서버면 비워 둔다. Cloudflare Pages에 화면만 올릴 때는 VITE_API_BASE=https://api.도메인
+export const API_BASE: string = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
+export const apiUrl = (p: string) => `${API_BASE}/api${p}`
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: any } = {}): Promise<T> {
-  const r = await fetch(`/api${path}`, {
+  const r = await fetch(apiUrl(path), {
     method: opts.method ?? (opts.body ? 'POST' : 'GET'),
     headers: opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
     body: opts.body ? (opts.body instanceof FormData ? opts.body : JSON.stringify(opts.body)) : undefined,

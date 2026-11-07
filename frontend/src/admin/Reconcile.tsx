@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react'
-import { api, md, useApi, won } from '../api'
+import { api, md, useApi, won, apiUrl } from '../api'
 import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 
 const CLASSES = ['학생회비', '참가비', '사업수익금', '예금결산이자', '기타', '취소']
@@ -32,9 +32,9 @@ export default function Reconcile({ embedded }: { embedded?: boolean }) {
         {embedded ? <p className="small ink2" style={{ margin: 0 }}>지출은 역진법(모든 출금 → 증빙), 수입은 전진법(모든 입금 → 장부·수입 구분)으로 맞춥니다 <Cite c="2부 6.4" />.</p> : <div><div className="crumb">감사 기간</div><h1>통장 대사 · 감사자료</h1>
           <p>지출은 역진법(모든 출금 → 증빙), 수입은 전진법(모든 입금 → 장부·수입 구분)으로 맞춥니다 <Cite c="2부 6.4" />.</p></div>}
         <div className="row">
-          <a className="btn" href="/api/export/statement.docx">수입/지출내역서 .docx</a>
-          <a className="btn" href="/api/export/ledger/main.xlsx">총거래장부 .xlsx</a>
-          <a className="btn" href="/api/export/ledger/fest.xlsx">축제 장부 .xlsx</a>
+          <a className="btn" href={apiUrl('/export/statement.docx')}>수입/지출내역서 .docx</a>
+          <a className="btn" href={apiUrl('/export/ledger/main.xlsx')}>총거래장부 .xlsx</a>
+          <a className="btn" href={apiUrl('/export/ledger/fest.xlsx')}>축제 장부 .xlsx</a>
         </div>
       </div>
       <div className="kpi" style={{ marginBottom: 16 }}>

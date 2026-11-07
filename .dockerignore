@@ -1,0 +1,10 @@
+**/node_modules
+**/__pycache__
+**/.venv
+frontend/dist
+backend/var
+data/synthetic/eval
+design
+.git
+.env
+*.png.tmp

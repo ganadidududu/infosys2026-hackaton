@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
-import { api, useApi, won } from '../api'
+import { api, useApi, won, apiUrl } from '../api'
 import type React from 'react'
 import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 import Receipts from './Receipts'
@@ -46,7 +46,7 @@ function Convert({ data, reload }: any) {
     setBusy(false)
   }
   async function trySample() {
-    const b = await (await fetch('/api/statement/sample.csv')).blob()
+    const b = await (await fetch(apiUrl('/statement/sample.csv'))).blob()
     up(b, '기중거래장부_예시.csv')
   }
   async function setCol(col: number, field: string) {
@@ -128,7 +128,7 @@ function Convert({ data, reload }: any) {
               {cur && <span className="xs muted">· {cur.code}{cur.src_row != null ? ` · 원본 ${cur.src_row + 2}행` : ' · 전용 처리'}</span>}
             </div>
           ) : <b className="small">수입/지출내역서</b>}
-          {rows.length > 0 && <a className="btn sm b" href="/api/export/statement.docx">.docx 받기</a>}
+          {rows.length > 0 && <a className="btn sm b" href={apiUrl('/export/statement.docx')}>.docx 받기</a>}
         </div>
         <div style={{ padding: 14, maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}>
           {cur ? <FormPage row={cur} rc={(cur.rc ?? [])[0] ? data.statement.receipts[cur.rc[0]] : null} rid={(cur.rc ?? [])[0]} />
@@ -167,7 +167,7 @@ function FormPage({ row, rc, rid }: any) {
             if (k === 2) return (
               <tr key={k}>{cells}
                 <td colSpan={4} rowSpan={N - 1} style={{ verticalAlign: 'middle', textAlign: 'center', padding: 10 }}>
-                  {rc?.image ? <img src={`/api/receipts/${rid}/image`} alt="영수증" style={{ maxWidth: '70%', maxHeight: 380 }} />
+                  {rc?.image ? <img src={apiUrl(`/receipts/${rid}/image`)} alt="영수증" style={{ maxWidth: '70%', maxHeight: 380 }} />
                     : rc ? <pre style={{ display: 'inline-block', textAlign: 'left', margin: 0, fontSize: 10.5, lineHeight: 1.55, fontFamily: 'ui-monospace,Menlo,monospace', background: '#fff', border: '1px dashed #c9cfdb', padding: '10px 14px' }}>{rc.ocr_text}</pre>
                     : <span className="small muted">{kinds.join(', ') || '과거거래내역서로 갈음'}</span>}
                 </td></tr>)
