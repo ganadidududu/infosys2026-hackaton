@@ -9,56 +9,58 @@ const STATUS_TAG: Record<string, string> = { '자동 확정': 't-g', '확정(감
 export default function Receipts({ embedded }: { embedded?: boolean }) {
   const { data, error, reload } = useApi('/receipts')
   const [sel, setSel] = useState<string | null>(null)
-  const [filter, setFilter] = useState('전체')
+  const [month, setMonth] = useState('전체')
   const [up, setUp] = useState(false)
   if (error) return <ErrorBox msg={error} />
   if (!data) return <Loading />
-  const rs = data.receipts as any[]
-  const projects = ['전체', ...Array.from(new Set(rs.map((r) => r.project)))]
-  const shown = rs.filter((r) => filter === '전체' || r.project === filter)
+  const rs = [...(data.receipts as any[])].sort((a, b) => a.date.localeCompare(b.date))
+  const mkey = (d: string) => d.slice(0, 7)
+  const months = Array.from(new Set(rs.map((r) => mkey(r.date))))
+  const label = (m: string) => `${+m.slice(5, 7)}월`
   const cur = rs.find((r) => r.id === sel)
-  const noItems = rs.filter((r) => !r.has_items).length
-  const lowConf = rs.filter((r) => Object.values(r.confidence).some((v: any) => v < 0.8)).length
+  const groups = (month === '전체' ? months : [month]).map((m) => ({ m, items: rs.filter((r) => mkey(r.date) === m) }))
+
+  const card = (r: any) => {
+    const low = Object.entries(r.confidence).filter(([, v]: any) => v < 0.8).map(([k]) => k)
+    return (
+      <button key={r.id} onClick={() => setSel(r.id)} className="card" style={{ textAlign: 'left', padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
+        <div style={{ background: 'repeating-linear-gradient(0deg,#fff,#fff 22px,#f6f7fa 22px,#f6f7fa 23px)', padding: '14px 16px', borderBottom: '1px dashed var(--line)', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, color: 'var(--ink2)', height: 96, overflow: 'hidden', lineHeight: '23px' }}>
+          {r.ocr_text.split('\n').slice(0, 4).map((l: string, i: number) => <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l}</div>)}
+        </div>
+        <div style={{ padding: '12px 16px' }}>
+          <div className="row" style={{ justifyContent: 'space-between' }}><b style={{ fontSize: 14, background: low.includes('vendor') ? '#fffbea' : undefined }}>{r.vendor}</b><span className="num" style={{ fontWeight: 800 }}>{won(r.amount)}</span></div>
+          <div className="xs muted" style={{ marginTop: 3 }}>{md(r.date)} · {r.project} · {r.kind} · {r.pay}</div>
+          <div className="row" style={{ gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+            <span className={`tag ${STATUS_TAG[r.match.status] ?? 't-n'}`}>{r.match.status}</span>
+            {!r.has_items && <span className="tag t-a">세목 없음</span>}
+            {r.installment > 0 && <span className="tag t-r">할부 {r.installment}개월</span>}
+            {r.points > 0 && <span className="tag t-r">포인트 {won(r.points)}P</span>}
+            {low.length > 0 && <span className="tag t-a">확인 {low.length}칸</span>}
+          </div>
+        </div>
+      </button>
+    )
+  }
 
   return (
     <>
-      <div className="ph">
-        {embedded ? <p className="small ink2" style={{ margin: 0 }}>결제할 때마다 찍어 올립니다. 로컬 OCR이 일시·업체·금액·세목·증빙 종류를 읽고 자기 검산을 하며, 신뢰도가 낮은 칸만 노란색으로 표시합니다.</p> : <div><div className="crumb">학기 중</div><h1>영수증함</h1>
-          <p>결제할 때마다 찍어 올립니다. 로컬 OCR이 읽고 자기 검산을 하며, 신뢰도가 낮은 칸만 노란색으로 표시합니다.</p></div>}
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+        <div className="seg">
+          <button className={month === '전체' ? 'on' : ''} onClick={() => setMonth('전체')}>전체 <span className="muted">{rs.length}</span></button>
+          {months.map((m) => <button key={m} className={month === m ? 'on' : ''} onClick={() => setMonth(m)}>{label(m)} <span className="muted">{rs.filter((r) => mkey(r.date) === m).length}</span></button>)}
+        </div>
         <button className="btn b" onClick={() => setUp(true)}>＋ 영수증 올리기</button>
       </div>
-      <div className="kpi" style={{ marginBottom: 16 }}>
-        <div className="k"><span>모은 증빙</span><b>{rs.length}장</b></div>
-        <div className="k amber"><span>세목 없음 → 계산서 필요</span><b>{noItems}</b></div>
-        <div className="k amber"><span>확인할 칸(노란색)</span><b>{lowConf}</b></div>
-        <div className="k red"><span>통장에 없는 영수증</span><b>{rs.filter((r) => r.match.status === '통장에 없는 영수증').length}</b></div>
-      </div>
-      <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-        {projects.map((p) => <button key={p} className={`chip`} style={filter === p ? { background: 'var(--ink)', color: '#fff' } : {}} onClick={() => setFilter(p)}>{p}</button>)}
-      </div>
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>
-        {shown.map((r) => {
-          const low = Object.entries(r.confidence).filter(([, v]: any) => v < 0.8).map(([k]) => k)
-          return (
-            <button key={r.id} onClick={() => setSel(r.id)} className="card" style={{ textAlign: 'left', padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
-              <div style={{ background: 'repeating-linear-gradient(0deg,#fff,#fff 22px,#f6f7fa 22px,#f6f7fa 23px)', padding: '14px 16px', borderBottom: '1px dashed var(--line)', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, color: 'var(--ink2)', height: 96, overflow: 'hidden', lineHeight: '23px' }}>
-                {r.ocr_text.split('\n').slice(0, 4).map((l: string, i: number) => <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l}</div>)}
-              </div>
-              <div style={{ padding: '12px 16px' }}>
-                <div className="row" style={{ justifyContent: 'space-between' }}><b style={{ fontSize: 14, background: low.includes('vendor') ? '#fffbea' : undefined }}>{r.vendor}</b><span className="num" style={{ fontWeight: 800 }}>{won(r.amount)}</span></div>
-                <div className="xs muted" style={{ marginTop: 3 }}>{md(r.date)} · {r.project} · {r.kind} · {r.pay}</div>
-                <div className="row" style={{ gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-                  <span className={`tag ${STATUS_TAG[r.match.status] ?? 't-n'}`}>{r.match.status}</span>
-                  {!r.has_items && <span className="tag t-a">세목 없음</span>}
-                  {r.installment > 0 && <span className="tag t-r">할부 {r.installment}개월</span>}
-                  {r.points > 0 && <span className="tag t-r">포인트 {won(r.points)}P</span>}
-                  {low.length > 0 && <span className="tag t-a">확인 {low.length}칸</span>}
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
+      {groups.map(({ m, items }) => (
+        <section key={m} style={{ marginBottom: 22 }}>
+          <div className="row" style={{ justifyContent: 'space-between', margin: '0 2px 10px' }}>
+            <b style={{ fontSize: 15 }}>{m.slice(0, 4)}년 {label(m)}</b>
+            <span className="small muted num">{items.length}장 · {won(items.reduce((s, r) => s + r.amount, 0))}원</span>
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{items.map(card)}</div>
+        </section>
+      ))}
+      {rs.length === 0 && <div className="empty">아직 올린 영수증이 없어요.</div>}
       {cur && <ReceiptDrawer r={cur} projects={data.projects} close={() => setSel(null)} reload={reload} />}
       {up && <Upload projects={data.projects} engine={data.engine} close={() => setUp(false)} reload={reload} />}
     </>
