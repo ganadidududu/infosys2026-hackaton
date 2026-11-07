@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, useApi } from '../api'
+import { api, useApi, won } from '../api'
 import { Cite, Disp, ErrorBox, Loading, Ring, useToast } from '../ui/ui'
 import { Detail, headline } from './AuditParts'
 
@@ -165,6 +165,9 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   }, [data]) // eslint-disable-line
   const pick = (f: any) => { setPid(f.packet); setSel(f.id); setOpen(f.id === sel ? open : null) }
   const packet = packets.find((p) => p.id === pid) ?? packets[0]
+  const cur = issues.find((f) => f.id === sel)
+  const { data: rdata } = useApi<any>('/receipts')
+  const rcpts = useMemo(() => Object.fromEntries(((rdata?.receipts ?? rdata ?? []) as any[]).map((x: any) => [x.id, x])), [rdata])
   const pending = t.pending_new + t.pending_check
   const filed = r.slots.filter((s: any) => s.file).length
   // 화면 전체는 스크롤하지 않고, 각 칸 안에서만 스크롤
@@ -202,8 +205,9 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
         </div>
       </div>
 
-      {/* 중: 감점 항목 */}
-      <div className="card sc-list">
+      {/* 중+우: 감점 항목 | 해당 서류 하나 + 세목 */}
+      <div className="card sc-main">
+      <div className="sc-list">
         <div className="sc-h2">감점 항목</div>
         {issues.length === 0 && <div className="empty small">지적 사항이 없습니다.</div>}
         {ordered.map((fs, g) => fs.length > 0 && (
@@ -224,46 +228,44 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
         <div className="sc-sum"><span>합계</span><span>−{t.total} · 경고 {t.warnings}</span></div>
       </div>
 
-      {/* 우: 서류 + 말풍선 */}
-      <div className="card sc-docs">
-        <DocPane packet={packet} findings={issues.filter((f) => f.packet === packet.id)} sel={sel} open={open}
-          onLine={(f: any) => { setSel(f.id); setOpen(open === f.id ? null : f.id) }}
+      <div className="sc-vbar" />
+      <div className="sc-docs">
+        {cur && <OnePane f={cur} packet={packet} receipts={rcpts} open={open === cur.id} checksBy={checksBy}
+          onLine={() => setOpen(open === cur.id ? null : cur.id)}
           no={no} short={short} titles={titles} clauseText={clauseText}
-          detail={(f: any) => <Detail f={f} data={data} titles={titles} checksBy={checksBy} base={`/records/${rid}`} reload={() => { setAdvance(true); reload() }} />} />
+          detail={(f: any) => <Detail f={f} data={data} titles={titles} checksBy={checksBy} base={`/records/${rid}`} reload={() => { setAdvance(true); reload() }} />} />}
+      </div>
       </div>
     </div>
   )
 }
 
-function DocPane({ packet, findings, sel, open, onLine, no, short, titles, clauseText, detail }: any) {
-  // 인용 위치: 원문에 있으면 그 줄, 없으면(인용 불일치) 같은 칸으로 시작하는 줄
-  const hits: { doc: string; line: string; f: any }[] = []
-  findings.forEach((f: any) => (f.evidence ?? []).forEach((e: any) => {
-    const d = packet.documents.find((x: any) => x.id === e.doc)
-    const q = (e.quote ?? '').trim()
-    if (!d || !q) return
-    const lines = d.text.split('\n')
-    const line = lines.find((l: string) => l.includes(q)) ?? lines.find((l: string) => l.startsWith(q.split(':')[0]))
-    if (line) hits.push({ doc: d.id, line, f })
-  }))
-  const placed = new Set(hits.map((h) => h.f.id))
-  const loose = findings.filter((f: any) => !placed.has(f.id))
-  const hasHit = (id: string) => hits.some((h) => h.doc === id)
-  const docs = [...packet.documents].sort((a: any, b: any) => +hasHit(b.id) - +hasHit(a.id))
-  useEffect(() => {
-    const el = document.querySelector('.sc-ln.sel, .sc-loose.sel')
-    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [sel, packet.id])
-
-  const call = (f: any) => {
-    const [pl, pc] = penalty(f)
-    return (
-      <span className={`sc-call ${pc}`}>
-        {pl && <span className={`tg ${pc}`}>{pl}</span>}<b>{no[f.id]}. {short(f)}</b><span className="cl">{f.clause}</span>
-      </span>
-    )
+function OnePane({ f, packet, receipts, open, onLine, checksBy, no, short, titles, clauseText, detail }: any) {
+  // 감점 하나 = 서류 하나. 인용이 원문에 있으면 그 줄, 없으면(인용 불일치) 같은 칸으로 시작하는 줄
+  let doc: any = null, hit: string | null = null
+  for (const e of f.evidence ?? []) {
+    const d = packet.documents.find((x: any) => x.id === e.doc); if (!d) continue
+    const q = (e.quote ?? '').trim(); const lines = d.text.split('\n')
+    const line = q ? (lines.find((l: string) => l.includes(q)) ?? lines.find((l: string) => l.startsWith(q.split(':')[0]))) : null
+    if (!doc || line) { doc = d; hit = line ?? null }
+    if (line) break
   }
-  const expand = (f: any) => open === f.id && (
+  // 세목: 이 감점과 이어진 거래·영수증
+  const targets = f.checks.map((c: string) => checksBy[c]?.target).filter(Boolean)
+  const rows = packet.ledger_rows.filter((r: any) => targets.includes(r.code) || targets.includes(r.tx))
+  const rids = new Set<string>()
+  ;(f.evidence ?? []).forEach((e: any) => { const m = /(R\d+)$/.exec(e.doc); if (m) rids.add(m[1]) })
+  rows.forEach((r: any) => r.rc.forEach((x: string) => rids.add(x)))
+  if (!rids.size && !rows.length && doc?.kind === '사업개요서') packet.ledger_rows.forEach((r: any) => r.rc.forEach((x: string) => rids.add(x)))
+  const rs = [...rids].map((id) => receipts[id]).filter(Boolean)
+  const [pl, pc] = penalty(f)
+
+  const call = (
+    <span className={`sc-call ${pc}`}>
+      {pl && <span className={`tg ${pc}`}>{pl}</span>}<b>{no[f.id]}. {short(f)}</b><span className="cl">{f.clause}</span>
+    </span>
+  )
+  const expand = open && (
     <div className="sc-open" onClick={(e) => e.stopPropagation()}>
       <div className="sc-rule"><span className="cl">{f.clause} · {titles[f.clause] ?? ''}</span>{clauseText[f.clause] && <p>{clauseText[f.clause]}</p>}</div>
       {detail(f)}
@@ -272,29 +274,42 @@ function DocPane({ packet, findings, sel, open, onLine, no, short, titles, claus
 
   return (
     <div className="sc-pane">
-      {loose.map((f: any) => (
-        <div key={f.id} className={`sc-loose ${sel === f.id ? 'sel' : ''}`} onClick={() => onLine(f)}>
-          <div className={`sc-ln hit ${penalty(f)[1]}`}><span className="muted">서류 밖 · 통장/장부 기준</span>{call(f)}</div>
-          {expand(f)}
+      {doc ? (
+        <div className="sc-paper">
+          <div className="sc-ph"><b>{doc.title}</b><em>{doc.kind}</em></div>
+          {doc.text.split('\n').map((line: string, i: number) => line === hit ? (
+            <div key={i} onClick={onLine} style={{ cursor: 'pointer' }}>
+              <div className={`sc-ln hit ${pc}`}><span>{line}</span>{call}</div>
+              {expand}
+            </div>
+          ) : <div key={i} className="sc-ln">{line}</div>)}
+          {!hit && <div onClick={onLine} style={{ cursor: 'pointer', marginTop: 6 }}><div className={`sc-ln hit ${pc}`}><span className="muted">서류 전체</span>{call}</div>{expand}</div>}
         </div>
-      ))}
-      {docs.length === 0 && loose.length === 0 && <div className="empty small">이 사업에 첨부된 서류가 없습니다.</div>}
-      {docs.map((d: any) => (
-        <div key={d.id} className="sc-paper">
-          <div className="sc-ph"><b>{d.title}</b><em>{d.kind}</em></div>
-          {d.text.split('\n').map((line: string, i: number) => {
-            const hs = hits.filter((h) => h.doc === d.id && h.line === line)
-            if (!hs.length) return <div key={i} className="sc-ln">{line}</div>
-            const f = (hs.find((h) => h.f.id === sel) ?? hs[0]).f
-            return (
-              <div key={i} onClick={() => onLine(f)} style={{ cursor: 'pointer' }}>
-                <div className={`sc-ln hit ${penalty(f)[1]} ${sel === f.id ? 'sel' : ''}`}><span>{line}</span>{call(f)}</div>
-                {expand(f)}
-              </div>
-            )
-          })}
+      ) : (
+        <div className="sc-paper" onClick={onLine} style={{ cursor: 'pointer' }}>
+          <div className={`sc-ln hit ${pc}`}><span className="muted">통장·장부 기준</span>{call}</div>
+          {expand}
         </div>
-      ))}
+      )}
+
+      <div className="sc-items">
+        <div className="sc-it-h">세목</div>
+        {rs.map((x: any) => (
+          <div key={x.id} className="sc-rc">
+            <div className="sc-rc-h"><b>{x.vendor}</b><span className="muted">{x.date.replaceAll('-', '.')}</span><span className="sp" /><b className="num">{won(x.amount)}</b></div>
+            {x.items?.length ? x.items.map((it: any, i: number) => (
+              <div key={i} className="sc-it"><span>{it.name}</span><span className="muted num">{won(it.qty)} × {won(it.price)}</span><b className="num">{won(it.qty * it.price)}</b></div>
+            )) : <div className="sc-it none">세목 없음</div>}
+          </div>
+        ))}
+        {!rs.length && rows.map((r: any) => (
+          <div key={r.code + r.date} className="sc-rc">
+            <div className="sc-rc-h"><b className="num">{r.code}</b><span className="muted">{r.date.replaceAll('-', '.')}</span><span>{r.content || r.bank_desc}</span><span className="sp" /><b className="num">{won(r.in || r.out)}</b></div>
+            {r.out > 0 && <div className={`sc-it ${r.items ? '' : 'none'}`}>{r.items || '세목 없음'}</div>}
+          </div>
+        ))}
+        {!rs.length && !rows.length && <div className="sc-it none" style={{ border: 0 }}>이어진 영수증이 없습니다</div>}
+      </div>
     </div>
   )
 }
