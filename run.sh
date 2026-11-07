@@ -2,6 +2,8 @@
 # Auditon 한 번에 실행: 프론트엔드를 빌드하고 백엔드(8000)가 화면까지 함께 띄운다.
 set -e
 cd "$(dirname "$0")"
+# .env가 있으면 읽는다(OPENROUTER_API_KEY, AUDITON_LLM=live 등)
+set -a; [ -f .env ] && . ./.env; set +a
 [ -d backend/.venv ] || python3 -m venv backend/.venv
 backend/.venv/bin/pip install -q --disable-pip-version-check -r backend/requirements.txt
 if command -v npm >/dev/null 2>&1; then
