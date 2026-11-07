@@ -25,6 +25,6 @@ jobs:
       - name: 이미지 빌드 + 헬스 체크
         run: |
           docker build --build-arg WITH_OCR=0 -t auditon:ci .
-          docker run -d --name a -p 8000:8000 auditon:ci
+          docker run -d --name auditon-ci -p 8000:8000 auditon:ci
           for i in $(seq 1 30); do curl -fsS localhost:8000/api/health && exit 0; sleep 2; done
-          docker logs a; exit 1
+          docker logs auditon-ci; exit 1
