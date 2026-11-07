@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, useApi } from '../api'
-import { Cite, Disp, ErrorBox, Loading, Ring, VERDICT, Verdict, useToast } from '../ui/ui'
-import { DocViewer, Detail, ORDER, headline, vkey } from './AuditParts'
+import { Cite, Disp, ErrorBox, Loading, Ring, useToast } from '../ui/ui'
+import { Detail, headline } from './AuditParts'
 
 const STEPS = ['감사 패킷 구성', '감사 LLM 1차 호출', '감사 LLM 2차 호출', '코드 검증', '선례 처분 · 경고 규칙']
 
@@ -40,12 +40,11 @@ export default function GradeRecord() {
           <h1>{r.title}</h1>
           {r.memo && <p>{r.memo}</p>}
         </div>
-        <div className="row">
+        {!audit.data.ran && <div className="row">
           <button className="btn" onClick={async () => { await api(`/records/${rid}/fill-sample`, { method: 'POST' }); toast('시연용 가상 서류로 채웠습니다'); reloadAll() }}>시연용 서류 채우기</button>
           <button className="btn b" disabled={!ready || running >= 0} title={ready ? '' : '필수 서류를 모두 올리세요'} onClick={run}>
             {running >= 0 ? <><span className="spin" /> 채점 중</> : audit.data.ran ? '다시 채점' : '채점 시작'}</button>
-          {audit.data.ran && <Link className="btn p" to="/admin/report">감사보고서·공시 →</Link>}
-        </div>
+        </div>}
       </div>
 
       {running >= 0 && (
@@ -76,7 +75,7 @@ export default function GradeRecord() {
             <div className="xs muted" style={{ marginTop: 12, lineHeight: 1.6 }}>필수 서류를 모두 올리면 채점할 수 있어요. 시연할 때는 ‘시연용 서류 채우기’를 누르세요.</div>
           </div>
         </div>
-      ) : <Scored rid={rid} r={r} data={audit.data} titles={titles} reload={reloadAll} />}
+      ) : <Scored rid={rid} r={r} data={audit.data} titles={titles} reload={reloadAll} onRun={run} running={running} />}
     </>
   )
 }
@@ -120,102 +119,181 @@ function SlotRow({ s, rid, reload, compact }: any) {
   )
 }
 
-// 모의 채점 2단계: 좌 제출 현황 · 중 서류 하이라이트 · 우 점수 + 지적 근거
-function Scored({ rid, r, data, titles, reload }: any) {
+// 모의 채점 2단계 (시안 v8): 좌 점수+제출 서류 · 중 점수 산정 근거 · 우 서류(문제 줄에 말풍선)
+const GROUPS = ['사업개요서', '장부 · 내역서 · 증빙', '통장 · 학과 전체']
+
+function penalty(f: any): [string, string] {
+  if (f.verdict === '확인 필요') return ['확인', 'q']
+  const d = f.disposition
+  if (!d) return ['', '']
+  if (d.type === '신규 유형') return ['전원 논의', 'q']
+  if (d.type === '감점') return [`−${d.points}`, 'm']
+  if (d.type === '경고') return ['경고', 'w']
+  return [d.type, '']
+}
+
+function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   const t = data.totals, sc = data.score
   const packets = data.packets as any[]
   const all = data.findings as any[]
-  const [pid, setPid] = useState<string>(() => all.find((f) => f.verdict !== '충족')?.packet ?? packets[0].id)
-  const [onlyIssues, setOnlyIssues] = useState(true)
-  const [sel, setSel] = useState<string | null>(null)
-  const [advance, setAdvance] = useState(false)
+  const { data: kijun } = useApi<any[]>('/kijun')
+  const clauseText = useMemo(() => Object.fromEntries((kijun ?? []).map((c: any) => [c.id, c.text])), [kijun])
   const checksBy = useMemo(() => Object.fromEntries(data.checks.map((c: any) => [c.id, c])), [data.checks])
-  const packet = packets.find((p) => p.id === pid) ?? packets[0]
-  const issueNo = useMemo(() => { const m: Record<string, number> = {}; let n = 0; all.filter((f) => f.verdict !== '충족').forEach((f) => { m[f.id] = ++n }); return m }, [all])
-  const list = all.filter((f) => f.packet === pid && (!onlyIssues || f.verdict !== '충족')).sort((a, b) => (ORDER[a.verdict] ?? 2) - (ORDER[b.verdict] ?? 2))
-  const listKey = list.map((f) => f.id).join('|')
-  useEffect(() => { if (!sel || !list.find((f) => f.id === sel)) setSel(list[0]?.id ?? null) }, [pid, onlyIssues, listKey]) // eslint-disable-line
+  const docKind = useMemo(() => { const m: Record<string, string> = {}; packets.forEach((p) => p.documents.forEach((d: any) => { m[d.id] = d.kind })); return m }, [packets])
+  const issues = all.filter((f) => f.verdict !== '충족')
+  const groupOf = (f: any) => {
+    const kinds = (f.evidence ?? []).map((e: any) => docKind[e.doc])
+    if (kinds.includes('사업개요서')) return 0
+    if (f.packet === 'ALL' || kinds.includes('통장사본') || kinds.length === 0) return 2
+    return 1
+  }
+  const pidNo = (pid: string) => (pid === 'ALL' ? 0 : +pid.slice(1))
+  const loc = (f: any) => f.checks.map((c: string) => checksBy[c]?.target).find(Boolean) ?? (f.packet === 'ALL' ? '전체' : `사업 ${pidNo(f.packet)}`)
+  const short = (f: any) => headline(f, titles, f.checks.map((c: string) => checksBy[c]?.message).find(Boolean))
+  const ordered = GROUPS.map((_, g) => issues.filter((f) => groupOf(f) === g).sort((a, b) => pidNo(a.packet) - pidNo(b.packet)))
+  const no: Record<string, number> = {}; let n = 0; ordered.flat().forEach((f) => { no[f.id] = ++n })
+
+  const [sel, setSel] = useState<string | null>(() => ordered.flat()[0]?.id ?? null)
+  const [pid, setPid] = useState<string>(() => ordered.flat()[0]?.packet ?? packets[0].id)
+  const [open, setOpen] = useState<string | null>(null)
+  const [advance, setAdvance] = useState(false)
   useEffect(() => {
     if (!advance) return
     setAdvance(false)
-    const next = list.find((f) => !f.confirmed && f.verdict !== '충족' && f.id !== sel) ?? all.find((f) => !f.confirmed && f.verdict !== '충족')
-    if (next) { setPid(next.packet); setSel(next.id) }
+    const next = ordered.flat().find((f) => !f.confirmed && f.id !== sel)
+    if (next) { setPid(next.packet); setSel(next.id); setOpen(null) }
   }, [data]) // eslint-disable-line
-  const cur = all.find((f) => f.id === sel)
-  const issuesPer = (id: string) => all.filter((f) => f.packet === id && f.verdict !== '충족').length
+  const pick = (f: any) => { setPid(f.packet); setSel(f.id); setOpen(f.id === sel ? open : null) }
+  const packet = packets.find((p) => p.id === pid) ?? packets[0]
+  const issuesPer = (id: string) => issues.filter((f) => f.packet === id).length
   const pending = t.pending_new + t.pending_check
-  const color = sc.score >= 98 ? 'var(--green)' : sc.score >= 95 ? 'var(--brand)' : 'var(--red)'
+  const filed = r.slots.filter((s: any) => s.file).length
 
   return (
-    <div className="grid" style={{ gridTemplateColumns: '250px minmax(0,1fr) minmax(340px,410px)', alignItems: 'start' }}>
-      {/* 좌: 제출 현황 */}
-      <div className="card" style={{ position: 'sticky', top: 76 }}>
-        <div className="pad" style={{ paddingBottom: 10 }}><div className="sec-t" style={{ margin: 0 }}>제출 서류 <small>{r.slots.filter((s: any) => s.file).length}/{r.slots.length}</small></div></div>
-        {r.slots.map((s: any) => <SlotRow key={s.key} s={s} rid={rid} reload={reload} compact />)}
-        <div className="pad xs muted" style={{ lineHeight: 1.6 }}>서류를 바꾸면 ‘다시 채점’을 누르세요.</div>
-      </div>
-
-      {/* 중: 서류 하이라이트 */}
-      <div className="card">
-        <div className="tabs">
-          {packets.map((p) => (
-            <button key={p.id} className={p.id === pid ? 'on' : ''} onClick={() => setPid(p.id)}>
-              {p.id === 'ALL' ? '학과 전체' : `사업 ${p.id.slice(1)} · ${p.title}`}
-              {issuesPer(p.id) > 0 && <span className="tag t-r" style={{ marginLeft: 6, padding: '1px 6px' }}>{issuesPer(p.id)}</span>}
-            </button>
-          ))}
-        </div>
-        <DocViewer packet={packet} findings={all.filter((f) => f.packet === pid)} sel={sel} setSel={setSel} issueNo={issueNo} />
-      </div>
-
-      {/* 우: 점수 + 지적 */}
-      <div className="grid" style={{ position: 'sticky', top: 76 }}>
-        <div className="card pad">
-          <div className="row" style={{ gap: 18 }}>
-            <Ring value={sc.score} label="/ 100점" frac={sc.score / 100} color={color} size={118} />
-            <div className="small" style={{ flex: 1 }}>
-              <div className="muted xs">모의 점수 = 100 − 총 감점</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 4, marginTop: 8 }}>
-                <span>사례 감점</span><b className="num" style={{ color: 'var(--red)' }}>−{t.case_points}</b>
-                <span>경고 감점 <span className="xs muted">({t.warnings}회)</span></span><b className="num" style={{ color: 'var(--amber)' }}>−{t.warning_points}</b>
-              </div>
-              {pending > 0 && <div className="xs" style={{ marginTop: 8, color: 'var(--amber-ink)', lineHeight: 1.5 }}>미확정 {pending}건(확인 필요 {t.pending_check} · 신규 유형 {t.pending_new})은 아직 점수에 반영되지 않았어요</div>}
-            </div>
+    <div className="grid sc-grid">
+      {/* 좌: 점수 + 제출 서류 */}
+      <div className="sc-left">
+        <div className="card sc-score">
+          <div className="v num">{sc.score}<small>/ 100</small></div>
+          <div className="cs">
+            <span className="c">감점 −{t.case_points}</span>
+            <span className="c">경고 {t.warnings}회 −{t.warning_points}</span>
+            {pending > 0 && <span className="c a">미확정 {pending}</span>}
           </div>
-          <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', background: 'var(--gray-soft)', marginTop: 14 }}>
-            {(['충족', '미충족', '확인 필요'] as const).map((k) => <i key={k} style={{ width: `${((t.by_verdict[k] ?? 0) / t.clauses) * 100}%`, background: VERDICT[k].color }} />)}
-          </div>
-          <div className="row xs muted" style={{ gap: 12, marginTop: 6 }}>
-            {(['충족', '미충족', '확인 필요'] as const).map((k) => <span key={k}>{k} <b style={{ color: 'var(--ink)' }}>{t.by_verdict[k] ?? 0}</b></span>)}
-            <span className="sp" /><span>{t.clauses}개 조항</span>
+          <div className="bb">
+            <button className="btn sm" disabled={running >= 0} onClick={onRun}>{running >= 0 ? <><span className="spin" /> 채점 중</> : '다시 채점'}</button>
+            <Link className="btn sm k" to="/admin/report">보고서</Link>
           </div>
         </div>
+        <div className="card" style={{ paddingTop: 4 }}>
+          <div className="sc-lh">제출 서류 {filed}/{r.slots.length}</div>
+          {r.slots.map((s: any) => <SlotRow key={s.key} s={s} rid={rid} reload={reload} compact />)}
+        </div>
+      </div>
 
-        <div className="card" style={{ padding: 6 }}>
-          <div className="row" style={{ justifyContent: 'space-between', padding: '8px 10px 6px' }}>
-            <b className="small">{packet.title} · 판정 {all.filter((f) => f.packet === pid).length}건</b>
-            <div className="seg"><button className={onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(true)}>지적만</button><button className={!onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(false)}>전체</button></div>
-          </div>
-          <div style={{ maxHeight: 250, overflow: 'auto' }}>
-            {list.length === 0 && <div className="empty small">지적 사항이 없습니다.</div>}
-            {list.map((f) => {
-              const vk = vkey(f)
-              const msg = f.checks.map((c: string) => checksBy[c]?.message).find(Boolean)
+      {/* 중: 점수 산정 근거 */}
+      <div className="card sc-list">
+        <div className="sc-h2">점수 산정 근거</div>
+        {issues.length === 0 && <div className="empty small">지적 사항이 없습니다.</div>}
+        {ordered.map((fs, g) => fs.length > 0 && (
+          <div key={g} className="sc-grp">
+            <div className="sc-gl">{GROUPS[g]}</div>
+            {fs.map((f) => {
+              const [pl, pc] = penalty(f)
               return (
-                <button key={f.id} onClick={() => setSel(f.id)} style={{ all: 'unset', cursor: 'pointer', display: 'grid', gridTemplateColumns: '22px 1fr auto', gap: 10, padding: 12, borderRadius: 10, width: '100%', boxSizing: 'border-box', background: sel === f.id ? '#f6f8fc' : undefined, outline: sel === f.id ? '1px solid var(--line)' : undefined }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: VERDICT[vk]?.color, color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center' }}>{issueNo[f.id] ?? '✓'}</span>
-                  <span>
-                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, lineHeight: 1.4 }}>{headline(f, titles, msg)}</span>
-                    <span className="xs muted">{f.clause} · {titles[f.clause] ?? ''}{f.confirmed && ' · 확정됨'}</span>
-                  </span>
-                  {f.verdict === '충족' ? <Verdict v="충족" /> : <Disp d={f.disposition} verdict={f.verdict} />}
+                <button key={f.id} className={`sc-row ${sel === f.id ? 'on' : ''} ${f.confirmed ? 'done' : ''}`} onClick={() => pick(f)}>
+                  <span className="n">{no[f.id]}.</span>
+                  <span className="tx"><b className="num">{loc(f)}</b>{short(f)}</span>
+                  <span className={`sc-p ${pc}`}>{f.confirmed && <i>✓</i>}{pl}</span>
                 </button>
               )
             })}
           </div>
-        </div>
-        {cur && <Detail f={cur} data={data} titles={titles} checksBy={checksBy} base={`/records/${rid}`} reload={() => { setAdvance(true); reload() }} />}
+        ))}
+        <div className="sc-sum"><span>합계</span><span>−{t.total} · 경고 {t.warnings}</span></div>
       </div>
+
+      {/* 우: 서류 + 말풍선 */}
+      <div className="card sc-docs">
+        <div className="sc-ptabs">
+          {packets.map((p) => {
+            const k = issuesPer(p.id)
+            return (
+              <button key={p.id} className={`${p.id === pid ? 'on' : ''} ${k ? '' : 'ok'}`} onClick={() => setPid(p.id)}>
+                {p.id === 'ALL' ? '학과 전체' : `${pidNo(p.id)} ${p.title}`}<b>{k || '✓'}</b>
+              </button>
+            )
+          })}
+        </div>
+        <DocPane packet={packet} findings={issues.filter((f) => f.packet === packet.id)} sel={sel} open={open}
+          onLine={(f: any) => { setSel(f.id); setOpen(open === f.id ? null : f.id) }}
+          no={no} short={short} titles={titles} clauseText={clauseText}
+          detail={(f: any) => <Detail f={f} data={data} titles={titles} checksBy={checksBy} base={`/records/${rid}`} reload={() => { setAdvance(true); reload() }} />} />
+      </div>
+    </div>
+  )
+}
+
+function DocPane({ packet, findings, sel, open, onLine, no, short, titles, clauseText, detail }: any) {
+  // 인용 위치: 원문에 있으면 그 줄, 없으면(인용 불일치) 같은 칸으로 시작하는 줄
+  const hits: { doc: string; line: string; f: any }[] = []
+  findings.forEach((f: any) => (f.evidence ?? []).forEach((e: any) => {
+    const d = packet.documents.find((x: any) => x.id === e.doc)
+    const q = (e.quote ?? '').trim()
+    if (!d || !q) return
+    const lines = d.text.split('\n')
+    const line = lines.find((l: string) => l.includes(q)) ?? lines.find((l: string) => l.startsWith(q.split(':')[0]))
+    if (line) hits.push({ doc: d.id, line, f })
+  }))
+  const placed = new Set(hits.map((h) => h.f.id))
+  const loose = findings.filter((f: any) => !placed.has(f.id))
+  const hasHit = (id: string) => hits.some((h) => h.doc === id)
+  const docs = [...packet.documents].sort((a: any, b: any) => +hasHit(b.id) - +hasHit(a.id))
+  useEffect(() => {
+    const el = document.querySelector('.sc-ln.sel, .sc-loose.sel')
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [sel, packet.id])
+
+  const call = (f: any) => {
+    const [pl, pc] = penalty(f)
+    return (
+      <span className={`sc-call ${pc}`}>
+        {pl && <span className={`tg ${pc}`}>{pl}</span>}<b>{no[f.id]}. {short(f)}</b><span className="cl">{f.clause}</span>
+      </span>
+    )
+  }
+  const expand = (f: any) => open === f.id && (
+    <div className="sc-open" onClick={(e) => e.stopPropagation()}>
+      <div className="sc-rule"><span className="cl">{f.clause} · {titles[f.clause] ?? ''}</span>{clauseText[f.clause] && <p>{clauseText[f.clause]}</p>}</div>
+      {detail(f)}
+    </div>
+  )
+
+  return (
+    <div className="sc-pane">
+      {loose.map((f: any) => (
+        <div key={f.id} className={`sc-loose ${sel === f.id ? 'sel' : ''}`} onClick={() => onLine(f)}>
+          <div className={`sc-ln hit ${penalty(f)[1]}`}><span className="muted">서류 밖 · 통장/장부 기준</span>{call(f)}</div>
+          {expand(f)}
+        </div>
+      ))}
+      {docs.length === 0 && loose.length === 0 && <div className="empty small">이 사업에 첨부된 서류가 없습니다.</div>}
+      {docs.map((d: any) => (
+        <div key={d.id} className="sc-paper">
+          <div className="sc-ph"><b>{d.title}</b><em>{d.kind}</em></div>
+          {d.text.split('\n').map((line: string, i: number) => {
+            const hs = hits.filter((h) => h.doc === d.id && h.line === line)
+            if (!hs.length) return <div key={i} className="sc-ln">{line}</div>
+            const f = (hs.find((h) => h.f.id === sel) ?? hs[0]).f
+            return (
+              <div key={i} onClick={() => onLine(f)} style={{ cursor: 'pointer' }}>
+                <div className={`sc-ln hit ${penalty(f)[1]} ${sel === f.id ? 'sel' : ''}`}><span>{line}</span>{call(f)}</div>
+                {expand(f)}
+              </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

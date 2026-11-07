@@ -1,0 +1,81 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<style>
+:root{--ink:#111827;--mute:#8b93a3;--line:#e8ebf1;--blue:#2f6bff;--red:#e5484d;--amber:#e8930c;--green:#1f9d63}
+*{box-sizing:border-box}body{margin:0;background:#e9ecf3;font-family:Pretendard,sans-serif;color:var(--ink);padding:28px 36px}
+.lab{font-size:13px;font-weight:700;color:#556;margin-bottom:12px}
+.card{background:#fff;border-radius:20px;padding:22px 26px;box-shadow:0 10px 40px #1b23400f}
+.ptabs{display:flex;gap:8px;margin-bottom:16px}
+.pt{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;font-size:15px;font-weight:600;color:#5b6475;background:#f3f5f9}
+.pt b{font-size:12px;min-width:20px;height:20px;border-radius:10px;display:grid;place-items:center;background:var(--red);color:#fff}
+.pt.on{background:var(--ink);color:#fff}
+.pt.ok{color:#9aa2b1}.pt.ok b{background:#e6f6ee;color:var(--green)}
+.stabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.st{padding:10px 0;font-size:14px;font-weight:600;color:var(--mute)}.st span{color:#b4bac6;margin-left:4px}
+.st.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}.st.on span{color:var(--red)}
+.doc{display:grid;grid-template-columns:1fr 330px;gap:0 26px;margin-bottom:22px}
+.paper{border:1px solid var(--line);border-radius:14px;padding:20px 24px}
+.ph{display:flex;justify-content:space-between;font-weight:700;font-size:16px;margin-bottom:12px}
+.ph em{font-style:normal;font-size:12px;color:#6b7383;background:#f1f3f7;border-radius:8px;padding:4px 9px}
+.ln{font-size:15px;line-height:1.5;padding:6px 8px;margin:0 -8px;border-radius:8px;height:36px;display:flex;align-items:center}
+.ln.r{background:#fdecec;box-shadow:inset 3px 0 0 var(--red)}
+.ln.a{background:#fff4e2;box-shadow:inset 3px 0 0 var(--amber)}
+.side{position:relative}
+.bub{position:absolute;left:0;right:0;background:#fff;border:1.5px solid;border-radius:12px;padding:12px 14px}
+.bub:before{content:"";position:absolute;left:-8px;top:14px;width:13px;height:13px;background:#fff;border-left:1.5px solid;border-bottom:1.5px solid;border-color:inherit;transform:rotate(45deg)}
+.bub.r{border-color:var(--red)}.bub.a{border-color:var(--amber)}
+.bt{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px}
+.tag{font-size:12px;font-weight:700;padding:3px 8px;border-radius:7px}
+.r .tag{background:#fdecec;color:var(--red)}.a .tag{background:#fff4e2;color:#b26b00}
+.bs{font-size:13px;color:#5b6475;margin-top:5px}
+.bs code{font-family:inherit;font-weight:700;color:var(--ink)}
+</style></head><body>
+<div class="lab">모의 채점 · 가운데 서류 뷰어 시안 v4</div>
+<div class="card" style="width:1080px">
+  <div class="ptabs">
+    <div class="pt ok">1 개강총회 <b>✓</b></div>
+    <div class="pt on">2 과잠 공동구매 <b>2</b></div>
+    <div class="pt">3 MT <b>3</b></div>
+    <div class="pt ok">4 공대 체육대회 <b>✓</b></div>
+  </div>
+  <div class="stabs">
+    <div class="st on">서류<span>2</span></div>
+    <div class="st">장부<span>6</span></div>
+    <div class="st">코드 검사<span>2</span></div>
+    <div class="st">LLM 패킷</div>
+  </div>
+
+  <div class="doc">
+    <div class="paper">
+      <div class="ph">카드전표 · OO어패럴<em>증빙</em></div>
+      <div class="ln">사업자번호 369-46-10536</div>
+      <div class="ln">일시 2026-03-25 12:26</div>
+      <div class="ln">학과 과잠 제작 115 × 44,000</div>
+      <div class="ln">합계 5,060,000</div>
+      <div class="ln r">카드 ****-4417 할부 3개월</div>
+    </div>
+    <div class="side">
+      <div class="bub r" style="top:186px">
+        <div class="bt">할부 결제<span class="tag">경고</span></div>
+        <div class="bs">일시불만 인정 · <code>3부 53조</code></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc">
+    <div class="paper">
+      <div class="ph">사업개요서 · 과잠 공동구매<em>사업개요서</em></div>
+      <div class="ln">대상: 정보시스템학과 재학생</div>
+      <div class="ln">참가인원: 집행부 9명 / 전체 115명</div>
+      <div class="ln a">사업내용: 수요조사 후 업체 견적을 받아 제작</div>
+      <div class="ln">지출 적요: 과잠 제작비</div>
+    </div>
+    <div class="side">
+      <div class="bub a" style="top:114px">
+        <div class="bt">인용 불일치<span class="tag">확인 필요</span></div>
+        <div class="bs">LLM 인용이 원문과 다름 · <code>3부 42조</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

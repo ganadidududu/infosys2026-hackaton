@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<style>
+:root{--ink:#0e1525;--ink2:#4a5468;--mute:#9aa3b2;--line:#eceef3;--bg:#f6f7fa;--red:#e5484d;--amber:#e8930c;--violet:#7b4fd6;--green:#2f9e6a;--brand:#2557ff}
+*{box-sizing:border-box}body{margin:0;background:#dfe4ee;font-family:"Pretendard Variable",Pretendard,-apple-system,system-ui,"Apple SD Gothic Neo",sans-serif;color:var(--ink);padding:36px}
+.app{width:1280px;background:var(--bg);border-radius:18px;overflow:hidden;box-shadow:0 20px 60px rgba(14,21,37,.18)}
+.top{height:58px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 24px;gap:22px;font-size:14px}
+.logo{display:flex;gap:8px;align-items:center;font-weight:800;font-size:17px}.logo i{width:24px;height:24px;border-radius:7px;background:var(--brand);color:#fff;font-style:normal;display:grid;place-items:center;font-size:13px}
+.top a{color:var(--ink2)}.top a.on{color:var(--brand);font-weight:700}
+.wrap{padding:28px 32px 40px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.score{display:flex;align-items:flex-end;gap:14px}
+.score b{font-size:84px;line-height:.82;letter-spacing:-4px;font-weight:800}
+.score span{font-size:18px;color:var(--mute);padding-bottom:4px}
+.pills{display:flex;gap:8px;padding-bottom:6px}
+.pill{font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink2)}
+.pill.r{color:var(--red)}.pill.a{background:#fff4df;border-color:#fff4df;color:#a8650a}
+.btn{font-size:14px;font-weight:700;padding:11px 18px;border-radius:12px;background:var(--ink);color:#fff}
+.btn.g{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:250px 330px 1fr;gap:16px}
+.docs{background:#fff;border-radius:16px;padding:10px}
+.d{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:13.5px;font-weight:600}
+.d i{width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:11px;display:grid;place-items:center;flex:none}
+.d.opt{color:var(--mute);font-weight:500}.d.opt i{background:#e6f6ee;color:var(--green)}
+.list{background:#fff;border-radius:16px;padding:10px}
+.lh{font-size:12px;font-weight:700;color:var(--mute);padding:10px 12px 6px;letter-spacing:.3px}
+.it{display:flex;align-items:center;gap:12px;padding:14px 12px;border-radius:12px}
+.it.on{background:var(--bg)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.it .t{flex:1;font-size:14.5px;font-weight:700}.it .s{font-size:12px;color:var(--mute);font-weight:500;margin-top:2px}
+.it .v{font-size:13px;font-weight:800}
+.it.done .t{color:var(--mute);font-weight:500}
+.card{background:#fff;border-radius:16px;padding:34px 36px;display:flex;flex-direction:column}
+.chip{align-self:flex-start;font-size:12px;font-weight:700;color:var(--brand);background:#eaf0ff;padding:4px 10px;border-radius:999px}
+.card h2{font-size:30px;letter-spacing:-1px;margin:16px 0 6px}
+.nums{display:flex;align-items:baseline;gap:14px;margin:18px 0 26px}
+.nums b{font-size:40px;letter-spacing:-1.5px;font-weight:800}.nums .op{font-size:28px;color:var(--red);font-weight:800}
+.nums small{display:block;font-size:12px;color:var(--mute);font-weight:600;letter-spacing:0}
+.q{font-size:15px;padding:14px 16px;border-radius:12px;background:#fdecec;color:#b42318;font-weight:600}
+.meta{display:flex;gap:28px;margin-top:22px;font-size:13px;color:var(--mute)}
+.meta b{display:block;color:var(--ink);font-size:15px;margin-top:3px}
+.acts{display:flex;gap:10px;margin-top:auto;padding-top:30px}
+.acts .btn{flex:1;text-align:center;padding:15px}
+.label{font-size:13px;font-weight:700;color:var(--ink2);margin:0 0 10px 4px}
+</style></head><body>
+<p class="label">모의 채점 시안 v3 · 제출 서류 유지</p>
+<div class="app">
+  <div class="top"><div class="logo"><i>A</i>Auditon</div><a>(수입·지출) 내역서</a><a>학기 스케줄러</a><a class="on">모의 채점</a></div>
+  <div class="wrap">
+    <div class="head">
+      <div class="score"><b>98</b><span>/ 100</span>
+        <div class="pills"><span class="pill r">사례 −1</span><span class="pill r">경고 3회 −1</span><span class="pill a">미확정 4</span></div>
+      </div>
+      <div style="display:flex;gap:8px"><span class="btn g">다시 채점</span><span class="btn">보고서</span></div>
+    </div>
+    <div class="grid">
+      <div class="docs">
+        <div class="lh">제출 서류 8/8</div>
+        <div class="d"><i>✓</i>엑셀 장부</div>
+        <div class="d"><i>✓</i>수입/지출내역서</div>
+        <div class="d"><i>✓</i>사업개요서</div>
+        <div class="d"><i>✓</i>통장사본</div>
+        <div class="d"><i>✓</i>과거거래내역서</div>
+        <div class="d"><i>✓</i>증빙자료</div>
+        <div class="d"><i>✓</i>표지·원본대조필</div>
+        <div class="d opt"><i>✓</i>질의·답변</div>
+      </div>
+      <div class="list">
+        <div class="lh">확정할 것</div>
+        <div class="it on"><span class="dot" style="background:var(--violet)"></span><div class="t">참가비 &gt; 지출<div class="s">MT · 13조</div></div><span class="v" style="color:var(--violet)">신규</span></div>
+        <div class="it"><span class="dot" style="background:var(--amber)"></span><div class="t">대상란 판정 엇갈림<div class="s">MT · 40조</div></div><span class="v" style="color:var(--amber)">?</span></div>
+        <div class="it"><span class="dot" style="background:var(--amber)"></span><div class="t">인용 불일치<div class="s">과잠 · 42조</div></div><span class="v" style="color:var(--amber)">?</span></div>
+        <div class="it"><span class="dot" style="background:var(--amber)"></span><div class="t">미분류 입금<div class="s">전체 · 12조</div></div><span class="v" style="color:var(--amber)">?</span></div>
+        <div class="lh" style="margin-top:6px">확정됨</div>
+        <div class="it done"><span class="dot" style="background:var(--red)"></span><div class="t">계산서 산출 근거 누락</div><span class="v" style="color:var(--red)">−1</span></div>
+        <div class="it done"><span class="dot" style="background:var(--red)"></span><div class="t">할부 결제</div><span class="v" style="color:var(--amber)">경고</span></div>
+        <div class="it done"><span class="dot" style="background:var(--red)"></span><div class="t">포인트 적립</div><span class="v" style="color:var(--amber)">경고</span></div>
+        <div class="it done"><span class="dot" style="background:var(--red)"></span><div class="t">전용 근거 누락</div><span class="v" style="color:var(--amber)">경고</span></div>
+      </div>
+      <div class="card">
+        <span class="chip">3부 13조</span>
+        <h2>참가비 &gt; 지출</h2>
+        <div style="font-size:14px;color:var(--mute);font-weight:600">MT · 사업 3</div>
+        <div class="nums">
+          <div><small>참가비</small><b>1,980,000</b></div><span class="op">&gt;</span><div><small>지출</small><b>1,785,000</b></div>
+        </div>
+        <div class="q">수입 적요: MT 참가비</div>
+        <div class="meta"><div>선례<b>없음</b></div><div>처분<b style="color:var(--violet)">전원 논의</b></div><div>검증<b style="color:var(--green)">통과</b></div></div>
+        <div class="acts"><span class="btn g">원문</span><span class="btn">처분 입력</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
