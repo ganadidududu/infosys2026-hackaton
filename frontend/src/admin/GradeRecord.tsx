@@ -165,7 +165,6 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   }, [data]) // eslint-disable-line
   const pick = (f: any) => { setPid(f.packet); setSel(f.id); setOpen(f.id === sel ? open : null) }
   const packet = packets.find((p) => p.id === pid) ?? packets[0]
-  const issuesPer = (id: string) => issues.filter((f) => f.packet === id).length
   const pending = t.pending_new + t.pending_check
   const filed = r.slots.filter((s: any) => s.file).length
   // 화면 전체는 스크롤하지 않고, 각 칸 안에서만 스크롤
@@ -227,16 +226,6 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
 
       {/* 우: 서류 + 말풍선 */}
       <div className="card sc-docs">
-        <div className="sc-ptabs">
-          {packets.map((p) => {
-            const k = issuesPer(p.id)
-            return (
-              <button key={p.id} className={`${p.id === pid ? 'on' : ''} ${k ? '' : 'ok'}`} onClick={() => setPid(p.id)}>
-                {p.id === 'ALL' ? '학과 전체' : `${pidNo(p.id)} ${p.title}`}<b>{k || '✓'}</b>
-              </button>
-            )
-          })}
-        </div>
         <DocPane packet={packet} findings={issues.filter((f) => f.packet === packet.id)} sel={sel} open={open}
           onLine={(f: any) => { setSel(f.id); setOpen(open === f.id ? null : f.id) }}
           no={no} short={short} titles={titles} clauseText={clauseText}
