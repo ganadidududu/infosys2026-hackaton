@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, useApi, won } from '../api'
+import { api, useApi } from '../api'
 import { Cite, Disp, ErrorBox, Loading, Ring, useToast } from '../ui/ui'
 import { Detail, headline } from './AuditParts'
 
@@ -137,7 +137,7 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   const packets = data.packets as any[]
   const all = data.findings as any[]
   const { data: kijun } = useApi<any[]>('/kijun')
-  const clauseText = useMemo(() => Object.fromEntries((kijun ?? []).map((c: any) => [c.id, c.text])), [kijun])
+  const clauseText = useMemo(() => Object.fromEntries((kijun ?? []).map((c: any) => [c.id, c])), [kijun])
   const checksBy = useMemo(() => Object.fromEntries(data.checks.map((c: any) => [c.id, c])), [data.checks])
   const docKind = useMemo(() => { const m: Record<string, string> = {}; packets.forEach((p) => p.documents.forEach((d: any) => { m[d.id] = d.kind })); return m }, [packets])
   const issues = all.filter((f) => f.verdict !== '충족')
@@ -166,8 +166,6 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   const pick = (f: any) => { setPid(f.packet); setSel(f.id); setOpen(f.id === sel ? open : null) }
   const packet = packets.find((p) => p.id === pid) ?? packets[0]
   const cur = issues.find((f) => f.id === sel)
-  const { data: rdata } = useApi<any>('/receipts')
-  const rcpts = useMemo(() => Object.fromEntries(((rdata?.receipts ?? rdata ?? []) as any[]).map((x: any) => [x.id, x])), [rdata])
   const pending = t.pending_new + t.pending_check
   const filed = r.slots.filter((s: any) => s.file).length
   // 화면 전체는 스크롤하지 않고, 각 칸 안에서만 스크롤
@@ -230,7 +228,7 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
 
       <div className="sc-vbar" />
       <div className="sc-docs">
-        {cur && <OnePane f={cur} packet={packet} receipts={rcpts} open={open === cur.id} checksBy={checksBy}
+        {cur && <OnePane f={cur} packet={packet} open={open === cur.id} checksBy={checksBy}
           onLine={() => setOpen(open === cur.id ? null : cur.id)}
           no={no} short={short} titles={titles} clauseText={clauseText}
           detail={(f: any) => <Detail f={f} data={data} titles={titles} checksBy={checksBy} base={`/records/${rid}`} reload={() => { setAdvance(true); reload() }} />} />}
@@ -240,7 +238,7 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   )
 }
 
-function OnePane({ f, packet, receipts, open, onLine, checksBy, no, short, titles, clauseText, detail }: any) {
+function OnePane({ f, packet, open, onLine, checksBy, no, short, titles, clauseText, detail }: any) {
   // 감점 하나 = 서류 하나. 인용이 원문에 있으면 그 줄, 없으면(인용 불일치) 같은 칸으로 시작하는 줄
   let doc: any = null, hit: string | null = null
   for (const e of f.evidence ?? []) {
@@ -250,14 +248,12 @@ function OnePane({ f, packet, receipts, open, onLine, checksBy, no, short, title
     if (!doc || line) { doc = d; hit = line ?? null }
     if (line) break
   }
-  // 세목: 이 감점과 이어진 거래·영수증
-  const targets = f.checks.map((c: string) => checksBy[c]?.target).filter(Boolean)
-  const rows = packet.ledger_rows.filter((r: any) => targets.includes(r.code) || targets.includes(r.tx))
-  const rids = new Set<string>()
-  ;(f.evidence ?? []).forEach((e: any) => { const m = /(R\d+)$/.exec(e.doc); if (m) rids.add(m[1]) })
-  rows.forEach((r: any) => r.rc.forEach((x: string) => rids.add(x)))
-  if (!rids.size && !rows.length && doc?.kind === '사업개요서') packet.ledger_rows.forEach((r: any) => r.rc.forEach((x: string) => rids.add(x)))
-  const rs = [...rids].map((id) => receipts[id]).filter(Boolean)
+  // 세칙: 걸린 조항 원문(호가 있으면 호별로, 빠진 호는 빨갛게) + 걸린 이유 한 줄
+  const kj = clauseText[f.clause]
+  const items = Object.entries(kj?.items ?? {}) as [string, string][]
+  const lead = kj ? (items.length ? kj.text.split(items[0][0])[0].trim() : kj.text) : ''
+  const miss: string[] = f.missing ?? []
+  const why = f.checks.map((c: string) => checksBy[c]?.message).find(Boolean) ?? f.reasons?.[0] ?? f.question
   const [pl, pc] = penalty(f)
 
   const call = (
@@ -267,7 +263,6 @@ function OnePane({ f, packet, receipts, open, onLine, checksBy, no, short, title
   )
   const expand = open && (
     <div className="sc-open" onClick={(e) => e.stopPropagation()}>
-      <div className="sc-rule"><span className="cl">{f.clause} · {titles[f.clause] ?? ''}</span>{clauseText[f.clause] && <p>{clauseText[f.clause]}</p>}</div>
       {detail(f)}
     </div>
   )
@@ -293,22 +288,17 @@ function OnePane({ f, packet, receipts, open, onLine, checksBy, no, short, title
       )}
 
       <div className="sc-items">
-        <div className="sc-it-h">세목</div>
-        {rs.map((x: any) => (
-          <div key={x.id} className="sc-rc">
-            <div className="sc-rc-h"><b>{x.vendor}</b><span className="muted">{x.date.replaceAll('-', '.')}</span><span className="sp" /><b className="num">{won(x.amount)}</b></div>
-            {x.items?.length ? x.items.map((it: any, i: number) => (
-              <div key={i} className="sc-it"><span>{it.name}</span><span className="muted num">{won(it.qty)} × {won(it.price)}</span><b className="num">{won(it.qty * it.price)}</b></div>
-            )) : <div className="sc-it none">세목 없음</div>}
-          </div>
-        ))}
-        {!rs.length && rows.map((r: any) => (
-          <div key={r.code + r.date} className="sc-rc">
-            <div className="sc-rc-h"><b className="num">{r.code}</b><span className="muted">{r.date.replaceAll('-', '.')}</span><span>{r.content || r.bank_desc}</span><span className="sp" /><b className="num">{won(r.in || r.out)}</b></div>
-            {r.out > 0 && <div className={`sc-it ${r.items ? '' : 'none'}`}>{r.items || '세목 없음'}</div>}
-          </div>
-        ))}
-        {!rs.length && !rows.length && <div className="sc-it none" style={{ border: 0 }}>이어진 영수증이 없습니다</div>}
+        <div className="sc-it-h">세칙</div>
+        <div className="sc-kj-t"><span className={`tg ${pc}`}>{f.clause}</span><b>{titles[f.clause] ?? ''}</b></div>
+        {kj ? (
+          <>
+            <p className="sc-kj-p">{lead}</p>
+            {items.map(([k, v]) => (
+              <div key={k} className={`sc-kj-i ${miss.includes(k) ? 'bad' : ''}`}><span>{k}</span>{v}{miss.includes(k) && <em>빠짐</em>}</div>
+            ))}
+          </>
+        ) : <p className="sc-kj-p muted">기준안 원문을 불러오는 중</p>}
+        {why && <div className={`sc-why ${pc}`}>{why}</div>}
       </div>
     </div>
   )

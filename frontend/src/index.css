@@ -222,7 +222,15 @@ table.xl tbody tr.nolink{cursor:default;color:var(--mute)}
 .sc-sum span:last-child{color:var(--red)}
 .sc-docs{padding:14px 16px;display:flex;flex-direction:column;overflow:hidden}
 .sc-items{border:1px solid var(--line);border-radius:14px;padding:12px 18px}
-.sc-it-h{font-size:12px;font-weight:700;color:var(--mute);margin-bottom:6px}
+.sc-it-h{font-size:12px;font-weight:700;color:var(--mute);margin-bottom:8px}
+.sc-kj-t{display:flex;gap:8px;align-items:center;font-size:15px}
+.sc-kj-p{margin:10px 0 6px;font-size:14px;line-height:1.75;color:var(--ink2)}
+.sc-kj-i{display:flex;gap:8px;font-size:13.5px;line-height:1.6;padding:5px 10px;border-radius:8px;color:var(--ink2)}
+.sc-kj-i span{flex:none;color:var(--mute)}
+.sc-kj-i.bad{background:var(--red-soft);color:var(--ink);font-weight:600}.sc-kj-i.bad span{color:var(--red)}
+.sc-kj-i em{margin-left:auto;font-style:normal;font-size:11.5px;font-weight:800;color:var(--red);white-space:nowrap}
+.sc-why{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:600;background:var(--red-soft);color:var(--red)}
+.sc-why.w{background:var(--amber-soft);color:var(--amber-ink)}.sc-why.q{background:var(--violet-soft);color:var(--violet)}
 .sc-rc+.sc-rc{border-top:1px dashed var(--line);margin-top:8px;padding-top:8px}
 .sc-rc-h{display:flex;gap:10px;align-items:center;font-size:13.5px;padding:4px 0}
 .sc-rc-h .sp{flex:1}
