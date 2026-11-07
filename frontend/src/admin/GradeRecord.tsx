@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, useApi } from '../api'
 import { Cite, Disp, ErrorBox, Loading, Ring, useToast } from '../ui/ui'
@@ -168,9 +168,21 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
   const issuesPer = (id: string) => issues.filter((f) => f.packet === id).length
   const pending = t.pending_new + t.pending_check
   const filed = r.slots.filter((s: any) => s.file).length
+  // 화면 전체는 스크롤하지 않고, 각 칸 안에서만 스크롤
+  const box = useRef<HTMLDivElement>(null)
+  const [h, setH] = useState<number>()
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = box.current; if (!el) return
+      const top = el.getBoundingClientRect().top + window.scrollY
+      const below = document.documentElement.scrollHeight - (top + el.offsetHeight) // 아래 여백
+      setH(Math.max(420, window.innerHeight - top - Math.max(0, below)))
+    }
+    fit(); requestAnimationFrame(fit); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit)
+  }, [])
 
   return (
-    <div className="grid sc-grid">
+    <div className="grid sc-grid" ref={box} style={{ height: h }}>
       {/* 좌: 점수 + 제출 서류 */}
       <div className="sc-left">
         <div className="card sc-score">
