@@ -24,6 +24,28 @@ FIELDS = {
 }
 
 
+def xlsx_to_csv(raw: bytes) -> str:
+    """엑셀(.xlsx) 첫 시트를 CSV 텍스트로 바꾼다(이후 처리는 CSV와 같음)."""
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    for row in ws.iter_rows(values_only=True):
+        vals = []
+        for v in row:
+            if v is None:
+                vals.append("")
+            elif hasattr(v, "strftime"):
+                vals.append(v.strftime("%Y-%m-%d %H:%M") if getattr(v, "hour", 0) or getattr(v, "minute", 0) else v.strftime("%Y-%m-%d"))
+            elif isinstance(v, float) and v.is_integer():
+                vals.append(str(int(v)))
+            else:
+                vals.append(str(v))
+        w.writerow(vals)
+    return buf.getvalue()
+
+
 def decode(raw: bytes) -> str:
     for enc in ("utf-8-sig", "cp949", "euc-kr", "utf-8"):
         try:

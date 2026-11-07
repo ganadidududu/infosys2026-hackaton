@@ -227,30 +227,47 @@ def schedule_sample():
 # ---------------- (수입·지출) 내역서: 기중 거래 장부 CSV → 수입/지출내역서 ----------------
 @app.get("/api/statement")
 def statement_view():
+    """왼쪽: 엑셀(CSV) 원본 + 열 매핑, 오른쪽: 변환된 수입/지출내역서 페이지. 행 ↔ 페이지를 서로 잇는다."""
     st = load_state()
     lc = st.get("ledger_csv")
     ds, led = ledger_now()
-    out = {"fields": csv_import.FIELDS, "csv": None, "using": "csv" if lc and not csv_import.validate(lc.get("mapping", {})) else "sample"}
     if lc:
-        h, b = csv_import.read_rows(lc["text"])
-        tx, sk = csv_import.to_transactions(h, b, lc["mapping"]) if not csv_import.validate(lc["mapping"]) else ([], [])
-        out["csv"] = {"filename": lc["filename"], "header": h, "preview": b[:8], "rows": len(b), "mapping": lc["mapping"],
-                      "auto": lc.get("auto", {}), "errors": csv_import.validate(lc["mapping"]), "parsed": len(tx), "skipped": sk[:20]}
+        text, fname, mapping, source = lc["text"], lc["filename"], lc["mapping"], "upload"
+    else:
+        text, fname, source = csv_import.sample_csv(DS), "기중거래장부_예시.csv", "sample"
+        h0, b0 = csv_import.read_rows(text)
+        mapping = csv_import.auto_map(h0, b0)
+    h, b = csv_import.read_rows(text)
+    errs = csv_import.validate(mapping)
+    ctx, sk = csv_import.to_transactions(h, b, mapping) if not errs else ([], [])
+    # 원본 행 번호(본문 기준 0부터) 찾기: 날짜·통장내역·금액이 같은 행
+    key_to_row = {}
+    for t in ctx:
+        key_to_row.setdefault((t["date"], t["desc"], t["in"], t["out"]), int(t["id"][1:]) - 1)
+    tx_by = {t["id"]: t for t in ds["transactions"]}
     rows = [r for acc in ds["accounts"] for r in led["ledgers"][acc["id"]] if r["tx"] or r.get("transfer")]
+    for r in rows:
+        t = tx_by.get(r["tx"]) if r["tx"] else None
+        r["src_row"] = key_to_row.get((t["date"], t["desc"], t["in"], t["out"])) if t else None
     imgs = {f.stem for f in RECEIPT_IMG.glob("*")} if RECEIPT_IMG.exists() else set()
     rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
                      **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
-    out["statement"] = {"rows": rows, "accounts": {a["id"]: a["name"] for a in ds["accounts"]}, "projects": led["projects"],
-                        "counts": led["reconcile"]["counts"], "receipts": rcs}
-    return out
+    return {
+        "fields": csv_import.FIELDS,
+        "csv": {"filename": fname, "source": source, "header": h, "body": b, "mapping": mapping, "errors": errs,
+                "parsed": len(ctx), "skipped": sk[:50]},
+        "statement": {"rows": rows, "receipts": rcs, "counts": led["reconcile"]["counts"]},
+    }
 
 
 @app.post("/api/statement/upload")
 async def statement_upload(file: UploadFile = File(...)):
-    text = csv_import.decode(await file.read())
+    raw = await file.read()
+    name = (file.filename or "").lower()
+    text = csv_import.xlsx_to_csv(raw) if name.endswith((".xlsx", ".xlsm")) else csv_import.decode(raw)
     h, b = csv_import.read_rows(text)
     if not h or not b:
-        raise HTTPException(400, "CSV에서 표를 찾지 못했습니다")
+        raise HTTPException(400, "파일에서 표를 찾지 못했습니다")
     m = csv_import.auto_map(h, b)
     with LOCK:
         st = load_state()
@@ -268,7 +285,9 @@ def statement_mapping(body: dict = Body(...)):
         st = load_state()
         lc = st.get("ledger_csv")
         if not lc:
-            raise HTTPException(400, "CSV를 먼저 올리세요")
+            text = csv_import.sample_csv(DS)
+            h0, b0 = csv_import.read_rows(text)
+            lc = st["ledger_csv"] = {"filename": "기중거래장부_예시.csv", "text": text, "mapping": csv_import.auto_map(h0, b0)}
         h, _ = csv_import.read_rows(lc["text"])
         m = dict(lc["mapping"])
         for f, col in body.items():
