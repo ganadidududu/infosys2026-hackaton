@@ -59,7 +59,6 @@ export default function Checklist() {
             e.target.value = '' }} />
           <a className="btn sm ghost" href="/api/schedule/sample.csv">일정 CSV 양식</a>
           <button className="btn" onClick={() => fileRef.current?.click()}>일정 CSV 올리기</button>
-          <button className="btn b" onClick={() => setAdding('')}>＋ 일정 추가</button>
         </div>
       </div>
       <StageBar bar={data.bar} />
@@ -79,6 +78,7 @@ export default function Checklist() {
               <span className="row" style={{ gap: 5 }}><i className="cal-dot ev" />행사</span>
               <span className="row" style={{ gap: 5 }}><i className="cal-dot" />할 일 기한</span>
               <span className="row" style={{ gap: 5 }}><i className="cal-dot kj" />기준안 기한</span>
+              <button className="btn sm b" onClick={() => setAdding(focus ?? '')}>＋ 일정 추가</button>
             </div>
           </div>
           <div className="cal">
