@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react'
 import { api, md, useApi, won } from '../api'
-import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
+import { ErrorBox, Loading, useToast } from '../ui/ui'
 
-const INVOICE = ['① 업체·책임자 이름·서명', '② 책임자 연락처', '③ 견적 산출 근거(세목)', '④ 집행부 담당자 이름·서명·연락처', '⑤ 일자·수단·총액', '⑥ 법적 책임 경고·담당자 서명']
 const STATUS_TAG: Record<string, string> = { '자동 확정': 't-g', '확정(감사인)': 't-g', '확인 필요': 't-a', '통장에 없는 영수증': 't-r', 미매칭: 't-n' }
 
 export default function Receipts({ embedded }: { embedded?: boolean }) {
@@ -61,58 +60,64 @@ export default function Receipts({ embedded }: { embedded?: boolean }) {
         </section>
       ))}
       {rs.length === 0 && <div className="empty">아직 올린 영수증이 없어요.</div>}
-      {cur && <ReceiptDrawer r={cur} projects={data.projects} close={() => setSel(null)} reload={reload} />}
+      {cur && <ReceiptDrawer r={cur} close={() => setSel(null)} reload={reload} />}
       {up && <Upload projects={data.projects} engine={data.engine} close={() => setUp(false)} reload={reload} />}
     </>
   )
 }
 
-function ReceiptDrawer({ r, projects, close, reload }: any) {
+function ReceiptDrawer({ r, close, reload }: any) {
   const toast = useToast()
-  const [f, setF] = useState({ vendor: r.vendor, date: r.date, amount: r.amount, project: r.project })
-  const [inv, setInv] = useState<Record<string, boolean>>(r.invoice ?? {})
+  const [f, setF] = useState({ vendor: r.vendor, date: r.date, amount: r.amount })
+  const [items, setItems] = useState<any[]>(r.items?.length ? r.items.map((i: any) => ({ ...i })) : [{ name: '', qty: 1, price: 0 }])
   const low = (k: string) => (r.confidence[k] ?? 1) < 0.8
+  const setItem = (k: number, key: string, v: any) => setItems(items.map((it, i) => (i === k ? { ...it, [key]: v } : it)))
   async function save() {
-    await api(`/receipts/${r.id}`, { method: 'PATCH', body: { ...f, amount: +f.amount, ...(r.invoice || !r.has_items ? { invoice: inv } : {}) } })
-    toast('저장했습니다 · 대사와 감사자료에 바로 반영됩니다'); reload(); close()
+    await api(`/receipts/${r.id}`, { method: 'PATCH', body: { ...f, amount: +f.amount, items: items.map((i) => ({ ...i, qty: +i.qty, price: +i.price })) } })
+    toast('저장했습니다'); reload(); close()
   }
   return (
     <>
       <div className="scrim" onClick={close} />
-      <aside className="drawer" style={{ width: 'min(720px,100vw)' }}>
-        <header><div><div className="xs muted">{r.id} · {r.kind} · 로컬 OCR 결과</div><h3 style={{ fontSize: 18, marginTop: 4 }}>{r.vendor}</h3></div><button className="btn ghost" onClick={close}>✕</button></header>
-        <div className="body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-          <div>
-            <div className="sec-t">인식한 원문</div>
-            <pre style={{ margin: 0, background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 14, fontSize: 12, lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace,Menlo,monospace' }}>{r.ocr_text}</pre>
-            <div className="sec-t" style={{ marginTop: 16 }}>자기 검산</div>
-            {r.self_check.map((c: any) => (
-              <div key={c.check} className="row small" style={{ justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--line2)' }}>
-                <span>{c.ok ? '✓' : '✕'} {c.check}</span><span className={c.ok ? 'muted' : ''} style={{ color: c.ok ? undefined : 'var(--amber-ink)' }}>{c.detail}</span></div>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gap: 10, alignContent: 'start' }}>
-            <div className="sec-t" style={{ margin: 0 }}>메타데이터 <small>노란 칸만 확인</small></div>
-            <label className="field">업체<input className={`input ${low('vendor') ? 'warn' : ''}`} value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} /></label>
-            <label className="field">일시<input className={`input ${low('date') ? 'warn' : ''}`} type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
-            <label className="field">금액<input className={`input ${low('amount') ? 'warn' : ''}`} type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: +e.target.value })} /></label>
-            <label className="field">사업 태그<select className="input" value={f.project} onChange={(e) => setF({ ...f, project: e.target.value })}>{projects.map((p: string) => <option key={p}>{p}</option>)}</select></label>
-            <div className="field">세목<div className={`input ${low('items') ? 'warn' : ''}`} style={{ minHeight: 38 }}>{r.items.length ? r.items.map((i: any) => `${i.name} ${i.qty}×${won(i.price)}`).join(' / ') : <span style={{ color: 'var(--amber-ink)' }}>세목 표기 없음</span>}</div></div>
-            <div className="row small" style={{ gap: 6, flexWrap: 'wrap' }}>
-              <span className="tag t-n">{r.pay}</span><span className="tag t-n">{r.kind}</span>{r.card_last4 && <span className="tag t-n">카드 끝 {r.card_last4}</span>}
-              {r.attachments.map((a: string) => <span key={a} className="tag t-b">{a}</span>)}
-            </div>
-            {(r.invoice || !r.has_items) && (
-              <div style={{ border: '1px solid var(--amber)', background: 'var(--amber-soft)', borderRadius: 10, padding: 12 }}>
-                <b className="small">계산서 6항목 <Cite c="3부 35조" /></b>
-                <div className="xs ink2" style={{ margin: '4px 0 8px' }}>세목 표기가 불가능한 업체는 총액 영수증과 아래 항목을 모두 갖춘 계산서가 필요합니다.</div>
-                {INVOICE.map((t, i) => { const k = '①②③④⑤⑥'[i]; return (
-                  <label key={k} className="row small" style={{ gap: 8, padding: '3px 0' }}><input type="checkbox" checked={!!inv[k]} onChange={(e) => setInv({ ...inv, [k]: e.target.checked })} />{t}{!inv[k] && <span className="tag t-r">누락</span>}</label>) })}
+      <aside className="drawer" style={{ width: 'min(820px,100vw)' }}>
+        <header><div><div className="xs muted">{r.id} · {r.kind}</div><h3 style={{ fontSize: 18, marginTop: 4 }}>{r.vendor}</h3></div><button className="btn ghost" onClick={close}>✕</button></header>
+        <div className="body" style={{ display: 'grid', gap: 20, alignContent: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div className="sec-t">영수증 사진</div>
+              <div style={{ background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 10, height: 420, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                {r.image ? <img src={`/api/receipts/${r.id}/image`} alt="영수증 원본" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  : <span className="small muted">원본 사진이 없습니다</span>}
               </div>
-            )}
-            <div className="small muted">대사 상태: <b style={{ color: 'var(--ink)' }}>{r.match.status}</b>{r.match.tx && ` · ${r.match.tx.join(', ')}`}</div>
-            <button className="btn p" onClick={save}>저장</button>
+            </div>
+            <div>
+              <div className="sec-t">인식한 원문</div>
+              <pre style={{ margin: 0, height: 420, overflow: 'auto', background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 14, fontSize: 12.5, lineHeight: 1.85, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace,Menlo,monospace' }}>{r.ocr_text}</pre>
+            </div>
           </div>
+          <div>
+            <div className="sec-t">메타데이터 <small>노란 칸만 확인</small></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+              <label className="field">업체<input className={`input ${low('vendor') ? 'warn' : ''}`} value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} /></label>
+              <label className="field">일시<input className={`input ${low('date') ? 'warn' : ''}`} type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
+              <label className="field">금액<input className={`input num ${low('amount') ? 'warn' : ''}`} type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: +e.target.value })} /></label>
+            </div>
+            <div className="field" style={{ marginTop: 10 }}>세목
+              <div style={{ border: `1px solid ${low('items') ? '#f3d37a' : 'var(--line)'}`, background: low('items') ? '#fffbea' : '#fff', borderRadius: 9, overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 120px 32px', gap: 0, fontSize: 12, color: 'var(--mute)', padding: '6px 10px', borderBottom: '1px solid var(--line)' }}><span>세목</span><span>수량</span><span>단가</span><span /></div>
+                {items.map((it, k) => (
+                  <div key={k} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 120px 32px', gap: 6, padding: '6px 10px', alignItems: 'center' }}>
+                    <input className="input" value={it.name} placeholder="품목" onChange={(e) => setItem(k, 'name', e.target.value)} />
+                    <input className="input num" type="number" value={it.qty} onChange={(e) => setItem(k, 'qty', e.target.value)} />
+                    <input className="input num" type="number" value={it.price} onChange={(e) => setItem(k, 'price', e.target.value)} />
+                    <button className="btn sm ghost" title="줄 삭제" onClick={() => setItems(items.filter((_, i) => i !== k))}>✕</button>
+                  </div>
+                ))}
+                <button className="btn sm ghost" style={{ margin: '0 6px 6px' }} onClick={() => setItems([...items, { name: '', qty: 1, price: 0 }])}>＋ 세목 추가</button>
+              </div>
+            </div>
+          </div>
+          <button className="btn p" onClick={save}>저장</button>
         </div>
       </aside>
     </>

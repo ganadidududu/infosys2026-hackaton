@@ -164,7 +164,7 @@ def _page(doc, row: dict, rc: dict | None, img: Path | None, new_page: bool):
     R[total_r + 1].height = Cm(1.3)
 
 
-def statement_docx(ds: dict, led: dict, receipts: dict | None = None, image_dir: Path | None = None) -> bytes:
+def statement_docx(ds: dict, led: dict, receipts: dict | None = None, image_for=None) -> bytes:
     doc = Document()
     _font(doc)
     sec = doc.sections[0]
@@ -176,9 +176,7 @@ def statement_docx(ds: dict, led: dict, receipts: dict | None = None, image_dir:
     for k, row in enumerate(rows):
         rid = (row.get("rc") or [None])[0]
         rc = rc_by.get(rid) if rid else None
-        img = None
-        if image_dir and rid:
-            img = next(iter(sorted(image_dir.glob(f"{rid}.*"))), None)
+        img = image_for(rid) if (image_for and rid) else None
         _page(doc, row, rc, img, new_page=k > 0)
     bio = io.BytesIO()
     doc.save(bio)

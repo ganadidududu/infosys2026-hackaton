@@ -231,7 +231,7 @@ def statement_view():
     st = load_state()
     lc = st.get("ledger_csv")
     ds, led = ledger_now()
-    imgs = {f.stem for f in RECEIPT_IMG.glob("*")} if RECEIPT_IMG.exists() else set()
+    imgs = {f.stem for d in (RECEIPT_IMG, SAMPLE_IMG) if d.exists() for f in d.glob("*")}
     rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
                      **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
     if not lc:   # 아직 장부를 올리지 않음 → 원본 칸은 비워 둔다
@@ -320,7 +320,7 @@ def export_statement_docx():
     ds, led = ledger_now()
     st = load_state()
     rcs = {r["id"]: {**r, **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
-    return Response(docx_export.statement_docx(ds, led, rcs, RECEIPT_IMG),
+    return Response(docx_export.statement_docx(ds, led, rcs, receipt_image_path),
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_q('수입지출내역서.docx')}"})
 
@@ -357,14 +357,18 @@ def receipts():
     for r in ds["receipts"]:
         r = {**r, **st.get("receipt_edits", {}).get(r["id"], {})}
         parsed = ocr.parse(r.get("ocr_text", ""))
-        out.append({**r, "parsed": parsed, "self_check": ocr.self_check({**parsed, "amount": r["amount"], "has_items": r["has_items"]}),
+        out.append({**r, "image": bool(receipt_image_path(r["id"])), "parsed": parsed, "self_check": ocr.self_check({**parsed, "amount": r["amount"], "has_items": r["has_items"]}),
                     "match": state_of.get(r["id"], {"status": "통장에 없는 영수증" if r["id"] in rec["not_in_bank"] else "미매칭"})})
     return {"receipts": out, "projects": [p["name"] for p in ds["projects"]], "engine": ocr.engine_name()}
 
 
 @app.patch("/api/receipts/{rid}")
 def receipt_edit(rid: str, body: dict = Body(...)):
-    allowed = {"vendor", "date", "amount", "project", "kind", "pay", "has_items", "installment", "points", "invoice"}
+    allowed = {"vendor", "date", "amount", "project", "kind", "pay", "has_items", "installment", "points", "invoice", "items"}
+    if isinstance(body.get("items"), list):
+        body["items"] = [{"name": str(i.get("name", "")).strip(), "qty": int(i.get("qty") or 0), "price": int(i.get("price") or 0)}
+                         for i in body["items"] if str(i.get("name", "")).strip()]
+        body["has_items"] = bool(body["items"])
     with LOCK:
         st = load_state()
         st.setdefault("receipt_edits", {}).setdefault(rid, {}).update({k: v for k, v in body.items() if k in allowed})
@@ -375,9 +379,22 @@ def receipt_edit(rid: str, body: dict = Body(...)):
 RECEIPT_IMG = BACKEND / "var" / "files" / "receipts"
 
 
+SAMPLE_IMG = ROOT / "data" / "synthetic" / DATASET / "receipts"
+
+
+def receipt_image_path(rid: str) -> Path | None:
+    """업로드한 사진이 우선, 없으면 가상 영수증 이미지."""
+    for d in (RECEIPT_IMG, SAMPLE_IMG):
+        if d.exists():
+            f = next(iter(sorted(d.glob(f"{rid}.*"))), None)
+            if f:
+                return f
+    return None
+
+
 @app.get("/api/receipts/{rid}/image")
 def receipt_image(rid: str):
-    f = next(iter(sorted(RECEIPT_IMG.glob(f"{rid}.*"))), None) if RECEIPT_IMG.exists() else None
+    f = receipt_image_path(rid)
     if not f:
         raise HTTPException(404)
     return FileResponse(f)
