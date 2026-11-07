@@ -119,7 +119,7 @@ function SlotRow({ s, rid, reload, compact }: any) {
   )
 }
 
-// 모의 채점 2단계 (시안 v8): 좌 점수+제출 서류 · 중 점수 산정 근거 · 우 서류(문제 줄에 말풍선)
+// 모의 채점 2단계 (시안 v8): 좌 점수+제출 서류 · 중 감점 항목 · 우 서류(문제 줄에 말풍선)
 const GROUPS = ['사업개요서', '장부 · 내역서 · 증빙', '통장 · 학과 전체']
 
 function penalty(f: any): [string, string] {
@@ -191,9 +191,9 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
         </div>
       </div>
 
-      {/* 중: 점수 산정 근거 */}
+      {/* 중: 감점 항목 */}
       <div className="card sc-list">
-        <div className="sc-h2">점수 산정 근거</div>
+        <div className="sc-h2">감점 항목</div>
         {issues.length === 0 && <div className="empty small">지적 사항이 없습니다.</div>}
         {ordered.map((fs, g) => fs.length > 0 && (
           <div key={g} className="sc-grp">
