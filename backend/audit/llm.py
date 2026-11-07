@@ -3,7 +3,8 @@
 모드
 - replay(기본): 시연용 재생 모드. 실제 API 없이 규칙 기반 모의 응답을 만든다. 일부러 '인용 불일치'와
   '2회 판정 불일치'를 한 번씩 섞어 검증 단계가 동작하는 모습을 보여 준다(QUIRKS).
-- live: AUDITON_LLM=live 이고 ANTHROPIC_API_KEY가 있으면 Anthropic Messages API를 호출한다.
+- live: AUDITON_LLM=live 이고 OPENROUTER_API_KEY(또는 ANTHROPIC_API_KEY)가 있으면 실제 모델을 호출한다.
+  모델은 AUDIT_MODEL(기본 anthropic/claude-sonnet-5). 체크리스트 LLM과 다른 제공사를 쓴다.
 감점은 어떤 모드에서도 출력하지 않는다.
 """
 from __future__ import annotations
@@ -12,7 +13,11 @@ import json
 import os
 import re
 
-import httpx
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from core.llm_client import chat_json, provider  # noqa: E402
 
 SYSTEM_PROMPT = """너는 한양대학교 정보시스템학과 감사위원회의 감사 보조자다. 감사 패킷만 보고 조항마다 판단한다.
 규칙:
@@ -124,21 +129,33 @@ def _packet_prompt(packet: dict) -> str:
     return json.dumps(slim, ensure_ascii=False)
 
 
+AUDIT_MODEL = os.environ.get("AUDIT_MODEL", "anthropic/claude-sonnet-5")
+
+SCHEMA = {
+    "type": "object", "required": ["judgments"],
+    "properties": {"judgments": {"type": "array", "items": {
+        "type": "object", "required": ["clause", "target", "verdict", "evidence", "missing", "is_new_type"],
+        "properties": {
+            "clause": {"type": "string", "description": "패킷에 있는 조항 id 그대로, 예: 3부 35조"},
+            "target": {"type": "string"},
+            "verdict": {"type": "string", "enum": ["충족", "미충족", "확인 필요"]},
+            "evidence": {"type": "array", "items": {"type": "object", "required": ["doc", "quote"], "properties": {
+                "doc": {"type": "string", "description": "서류 id"},
+                "quote": {"type": "string", "description": "서류 문장을 글자 그대로"}}}},
+            "missing": {"type": "array", "items": {"type": "string"}, "description": "빠진 호, 예: ③"},
+            "same_case": {"type": ["object", "null"], "properties": {"case_id": {"type": "string"}, "why": {"type": "string"}}},
+            "is_new_type": {"type": "boolean"},
+            "question": {"type": ["string", "null"]},
+        }}}},
+}
+
+
 def _live(packet: dict) -> dict:
-    key = os.environ["ANTHROPIC_API_KEY"]
-    model = os.environ.get("AUDIT_MODEL", "claude-sonnet-5-5")
-    body = {"model": model, "max_tokens": 4096, "temperature": 0, "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": "감사 패킷(JSON):\n" + _packet_prompt(packet) + "\n\nJSON만 출력하라."}]}
-    r = httpx.post("https://api.anthropic.com/v1/messages", json=body, timeout=120,
-                   headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
-    r.raise_for_status()
-    text = "".join(b.get("text", "") for b in r.json()["content"])
-    m = re.search(r"\{.*\}", text, re.S)
-    return json.loads(m.group(0))
+    return chat_json(AUDIT_MODEL, SYSTEM_PROMPT, "감사 패킷(JSON):\n" + _packet_prompt(packet), SCHEMA, name="audit")
 
 
 def mode() -> str:
-    return "live" if os.environ.get("AUDITON_LLM") == "live" and os.environ.get("ANTHROPIC_API_KEY") else "replay"
+    return "live" if os.environ.get("AUDITON_LLM") == "live" and provider() else "replay"
 
 
 def call(packet: dict, call_no: int) -> dict:

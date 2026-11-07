@@ -125,8 +125,10 @@ def health():
         writable = False
     from core.kijun import KIJUN_MD
     ok = writable and DS_PATH.exists() and KIJUN_MD.exists()
+    from audit.llm import AUDIT_MODEL
+    from core.llm_client import provider
     body = {"ok": ok, "version": os.environ.get("AUDITON_VERSION", "dev"), "dataset": DATASET,
-            "llm": llm_mode(), "ocr": ocr.engine_name(), "storage_writable": writable,
+            "llm": llm_mode(), "llm_provider": provider(), "audit_model": AUDIT_MODEL if llm_mode() == "live" else None, "ocr": ocr.engine_name(), "storage_writable": writable,
             "uptime_s": round(time.time() - STARTED)}
     if not ok:
         raise HTTPException(503, detail=body)

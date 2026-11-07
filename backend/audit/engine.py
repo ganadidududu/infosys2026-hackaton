@@ -82,7 +82,12 @@ def run(ds: dict, led: dict, checklist_status: dict | None = None) -> dict:
                         latest = max([c] + others, key=lambda x: memory.period_key(x["period"]))
                         disp, source = latest["disposition"], latest["id"]
                         alt = [{"case": x["id"], "disposition": x["disposition"]} for x in [c] + others if x["id"] != latest["id"]]
-                elif new_type:
+                else:
+                    # 선례가 없으면(또는 LLM이 선례를 못 짚으면) 신규 유형: 감점은 정하지 않고 전원 논의(4부 24조).
+                    # 위반인데 감점도 보류도 없이 0점으로 흘러가는 일을 막는다.
+                    if not new_type:
+                        reasons.append("동일 선례 미지정 → 신규 유형으로 보류")
+                    new_type = True
                     disp, source = {"type": "신규 유형"}, "감사인단 전원 논의"
             fid = f"{p['id']}:{j1['clause']}"
             findings.append({
