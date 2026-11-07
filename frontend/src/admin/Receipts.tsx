@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { api, md, useApi, won } from '../api'
 import { ErrorBox, Loading, useToast } from '../ui/ui'
 
-const STATUS_TAG: Record<string, string> = { '자동 확정': 't-g', '확정(감사인)': 't-g', '확인 필요': 't-a', '통장에 없는 영수증': 't-r', 미매칭: 't-n' }
 
 export default function Receipts({ embedded }: { embedded?: boolean }) {
   const { data, error, reload } = useApi('/receipts')
@@ -19,27 +18,18 @@ export default function Receipts({ embedded }: { embedded?: boolean }) {
   const cur = rs.find((r) => r.id === sel)
   const groups = (month === '전체' ? months : [month]).map((m) => ({ m, items: rs.filter((r) => mkey(r.date) === m) }))
 
-  const card = (r: any) => {
-    const low = Object.entries(r.confidence).filter(([, v]: any) => v < 0.8).map(([k]) => k)
-    return (
-      <button key={r.id} onClick={() => setSel(r.id)} className="card" style={{ textAlign: 'left', padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
-        <div style={{ background: 'repeating-linear-gradient(0deg,#fff,#fff 22px,#f6f7fa 22px,#f6f7fa 23px)', padding: '14px 16px', borderBottom: '1px dashed var(--line)', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, color: 'var(--ink2)', height: 96, overflow: 'hidden', lineHeight: '23px' }}>
-          {r.ocr_text.split('\n').slice(0, 4).map((l: string, i: number) => <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l}</div>)}
+  const card = (r: any) => (
+    <button key={r.id} onClick={() => setSel(r.id)} className="rcpt" title="영수증 자세히 보기">
+      <div className="rcpt-paper">
+        <b className="rcpt-vendor">{r.vendor}</b>
+        <div className="rcpt-rule" />
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <span className="rcpt-date">{r.date.replaceAll('-', '.')}</span>
+          <span className="rcpt-amt">{won(r.amount)}<small>원</small></span>
         </div>
-        <div style={{ padding: '12px 16px' }}>
-          <div className="row" style={{ justifyContent: 'space-between' }}><b style={{ fontSize: 14, background: low.includes('vendor') ? '#fffbea' : undefined }}>{r.vendor}</b><span className="num" style={{ fontWeight: 800 }}>{won(r.amount)}</span></div>
-          <div className="xs muted" style={{ marginTop: 3 }}>{md(r.date)} · {r.project} · {r.kind} · {r.pay}</div>
-          <div className="row" style={{ gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-            <span className={`tag ${STATUS_TAG[r.match.status] ?? 't-n'}`}>{r.match.status}</span>
-            {!r.has_items && <span className="tag t-a">세목 없음</span>}
-            {r.installment > 0 && <span className="tag t-r">할부 {r.installment}개월</span>}
-            {r.points > 0 && <span className="tag t-r">포인트 {won(r.points)}P</span>}
-            {low.length > 0 && <span className="tag t-a">확인 {low.length}칸</span>}
-          </div>
-        </div>
-      </button>
-    )
-  }
+      </div>
+    </button>
+  )
 
   return (
     <>
@@ -56,7 +46,7 @@ export default function Receipts({ embedded }: { embedded?: boolean }) {
             <b style={{ fontSize: 15 }}>{m.slice(0, 4)}년 {label(m)}</b>
             <span className="small muted num">{items.length}장 · {won(items.reduce((s, r) => s + r.amount, 0))}원</span>
           </div>
-          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{items.map(card)}</div>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 18 }}>{items.map(card)}</div>
         </section>
       ))}
       {rs.length === 0 && <div className="empty">아직 올린 영수증이 없어요.</div>}
