@@ -6,8 +6,14 @@ if [ ! -d backend/.venv ]; then
   python3 -m venv backend/.venv
   backend/.venv/bin/pip install -q -r backend/requirements.txt
 fi
-if [ ! -d frontend/node_modules ]; then (cd frontend && npm install); fi
-(cd frontend && npm run build)
+if command -v npm >/dev/null 2>&1; then
+  [ -d frontend/node_modules ] || (cd frontend && npm install)
+  (cd frontend && npm run build)
+elif [ -d frontend/dist ]; then
+  echo "Node.js가 없어 미리 빌드된 화면(frontend/dist)을 사용합니다."
+else
+  echo "Node.js(npm)가 필요합니다: https://nodejs.org" && exit 1
+fi
 [ -f data/synthetic/tune/dataset.json ] || backend/.venv/bin/python data/synthetic/generate.py --set tune
 echo ""
 echo "  ▶ http://localhost:8000          학생 공개 페이지"
