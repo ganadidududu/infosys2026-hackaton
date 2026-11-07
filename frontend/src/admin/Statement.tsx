@@ -112,48 +112,91 @@ function CsvStep({ data, reload, next }: any) {
 
 function Preview({ data }: any) {
   const s = data.statement
-  const [acc, setAcc] = useState(Object.keys(s.accounts)[0])
+  const [i, setI] = useState(0)
+  const [q, setQ] = useState('')
+  const rows = s.rows as any[]
+  const idx = Math.min(i, rows.length - 1)
+  const row = rows[idx]
+  const go = (n: number) => setI(Math.max(0, Math.min(rows.length - 1, n)))
   return (
     <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) 300px', alignItems: 'start' }}>
-      {/* 문서 미리보기 (Word와 같은 칸) */}
-      <div className="card" style={{ background: '#e9edf3', padding: 24 }}>
-        <div style={{ background: '#fff', boxShadow: '0 2px 12px rgba(14,21,37,.12)', borderRadius: 4, padding: '36px 34px', minHeight: 600 }}>
-          <div style={{ textAlign: 'center', fontSize: 22, fontWeight: 800, letterSpacing: 2 }}>수입/지출내역서</div>
-          <div style={{ textAlign: 'center' }} className="small ink2">정보시스템학과 학생회 · 2026년 제1차 회계기간</div>
-          <div className="row" style={{ justifyContent: 'center', margin: '14px 0 18px' }}>
-            <div className="seg">{Object.entries(s.accounts).map(([k, v]: any) => <button key={k} className={acc === k ? 'on' : ''} onClick={() => setAcc(k)}>{v}</button>)}</div>
+      <div className="card" style={{ background: '#e9edf3', padding: '16px 24px 28px' }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn sm" onClick={() => go(idx - 1)} disabled={idx === 0}>‹ 이전</button>
+            <span className="small num" style={{ minWidth: 90, textAlign: 'center' }}><b>{idx + 1}</b> / {rows.length} 페이지</span>
+            <button className="btn sm" onClick={() => go(idx + 1)} disabled={idx === rows.length - 1}>다음 ›</button>
           </div>
-          <table className="t" style={{ fontSize: 11.5 }}>
-            <thead><tr><th>사업-일련</th><th>일자</th><th>통장내역</th><th>내용</th><th>구분</th><th>세목</th><th className="r">수입</th><th className="r">지출</th><th>지급방법</th><th>증빙</th><th>비고</th></tr></thead>
-            <tbody>{s.rows.filter((r: any) => ledgerAcc(r) === acc).map((r: any, i: number) => (
-              <tr key={i} style={r.class === '미분류' || r.note.includes('확인 필요') ? { background: 'var(--amber-soft)' } : undefined}>
-                <td className="mono">{r.code}</td><td>{r.date.slice(5)}</td><td>{r.bank_desc}</td><td>{r.content}</td><td>{r.class}</td><td>{r.items}</td>
-                <td className="r num">{r.in ? won(r.in) : ''}</td><td className="r num">{r.out ? won(r.out) : ''}</td><td>{r.method}</td><td>{r.evidence.join(', ')}</td><td className="muted">{r.note}</td></tr>))}</tbody>
-          </table>
+          <input className="input" style={{ maxWidth: 220 }} placeholder="번호·업체로 찾기 (예: 3-23)" value={q}
+            onChange={(e) => { setQ(e.target.value); const k = rows.findIndex((r) => r.code === e.target.value || r.bank_desc.includes(e.target.value) || r.content.includes(e.target.value)); if (e.target.value && k >= 0) setI(k) }} />
         </div>
+        {row && <FormPage row={row} rc={(row.rc ?? [])[0] ? s.receipts[row.rc[0]] : null} rid={(row.rc ?? [])[0]} />}
       </div>
       <div className="grid" style={{ position: 'sticky', top: 76 }}>
         <div className="card pad">
           <div className="sec-t">내려받기</div>
-          <a className="btn b" style={{ width: '100%', marginBottom: 8 }} href="/api/export/statement.docx">수입/지출내역서 .docx</a>
+          <a className="btn b" style={{ width: '100%', marginBottom: 8 }} href="/api/export/statement.docx">수입/지출내역서 .docx ({rows.length}페이지)</a>
           <a className="btn" style={{ width: '100%', marginBottom: 8 }} href="/api/export/ledger/main.xlsx">총거래장부 .xlsx (학생회비 통장)</a>
           <a className="btn" style={{ width: '100%' }} href="/api/export/ledger/fest.xlsx">축제 장부 .xlsx (3부 20조)</a>
-          <div className="xs muted" style={{ marginTop: 10, lineHeight: 1.6 }}>데이터: {data.using === 'csv' ? `올린 CSV(${data.csv.filename})` : '예시 거래 데이터'}</div>
+          <div className="xs muted" style={{ marginTop: 10, lineHeight: 1.6 }}>거래 1건이 1페이지입니다. 데이터: {data.using === 'csv' ? `올린 CSV(${data.csv.filename})` : '예시 거래 데이터'}</div>
         </div>
         <div className="card pad small ink2" style={{ lineHeight: 1.75 }}>
-          <div className="sec-t">작성 규칙</div>
-          · “(사업번호)-(일련번호)” <Cite c="3부 50조" /><br />· 통장내역은 과거거래내역서 문구 그대로 <Cite c="3부 51조" /><br />
-          · 세목은 영수증 표기 그대로, 수입은 수수료 뺀 순액 <Cite c="3부 53조" /><br />· 지급방법·증빙종류 <Cite c="3부 54조" /><br />
-          · 고정 사업번호 0·97·98·99·100 <Cite c="3부 38조" />
+          <div className="sec-t">자동으로 채우는 칸</div>
+          · 사업 및 일련번호 “(사업번호)-(일련번호)” <Cite c="3부 50조" /><br />· 통장내역은 과거거래내역서 문구 그대로 <Cite c="3부 51조" /><br />
+          · 세목·수량·단가는 영수증 표기 그대로, 수입은 수수료 뺀 순액 <Cite c="3부 53조" /><br />· 지급방법·증빙종류 <Cite c="3부 54조" /><br />
+          · 증빙서류 칸: 영수증 사진(없으면 인식한 영수증 내용) <Cite c="3부 55조" />
         </div>
-        <div className="card pad small">
-          <div className="sec-t">사업별 합계</div>
-          {s.projects.filter((p: any) => p.income || p.expense).map((p: any) => (
-            <div key={p.no} className="row" style={{ justifyContent: 'space-between', padding: '4px 0' }}><span><span className="tag t-b">{p.no}</span> {p.name}</span><span className="num xs">+{won(p.income)} / −{won(p.expense)}</span></div>))}
+        <div className="card pad" style={{ maxHeight: 300, overflow: 'auto' }}>
+          <div className="sec-t">페이지 목록</div>
+          {rows.map((r, k) => (
+            <button key={k} onClick={() => setI(k)} className="row small" style={{ all: 'unset', cursor: 'pointer', display: 'flex', width: '100%', gap: 8, padding: '5px 6px', borderRadius: 6, background: k === idx ? 'var(--brand-soft)' : undefined }}>
+              <span className="mono" style={{ minWidth: 44 }}>{r.code}</span><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bank_desc}</span>
+              <span className="num xs" style={{ color: r.in ? 'var(--green)' : 'var(--ink2)' }}>{r.in ? '+' : '−'}{won(r.in || Math.abs(r.out))}</span>
+            </button>))}
         </div>
       </div>
     </div>
   )
 }
 
-function ledgerAcc(r: any) { return r.account ?? 'main' }
+// 감사위원회 양식 그대로: 거래 1건 = 1페이지
+function FormPage({ row, rc, rid }: any) {
+  const L: React.CSSProperties = { background: '#d9d9d9', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }
+  const C: React.CSSProperties = { textAlign: 'center' }
+  const items = rc?.items?.length ? rc.items.map((i: any) => [i.name, i.qty, won(i.price)]) : [[row.items && !row.items.startsWith('(') ? row.items : row.content, 1, won(row.in || Math.abs(row.out))]]
+  const N = 19
+  const kinds = row.evidence.filter((e: string) => e !== '과거거래내역서')
+  return (
+    <div style={{ background: '#fff', boxShadow: '0 2px 14px rgba(14,21,37,.14)', borderRadius: 3, padding: '34px 30px 40px', maxWidth: 760, margin: '0 auto', aspectRatio: '210 / 297' }}>
+      <div style={{ textAlign: 'center', fontSize: 24, fontWeight: 800, letterSpacing: 3, marginBottom: 16 }}>수입 / 지출 내역서</div>
+      <table className="form-t">
+        <colgroup><col style={{ width: '23%' }} /><col style={{ width: '9%' }} /><col style={{ width: '13%' }} /><col style={{ width: '14%' }} /><col style={{ width: '13%' }} /><col style={{ width: '11%' }} /><col style={{ width: '17%' }} /></colgroup>
+        <tbody>
+          <tr><td style={L}>사업 및 일련번호</td><td colSpan={6} style={C}>{row.code}</td></tr>
+          <tr><td style={L}>사업명</td><td colSpan={6} style={C}>{row.project ?? ''}</td></tr>
+          <tr><td style={L}>날짜</td><td colSpan={2} style={C}>{row.date.slice(5, 7)}.{row.date.slice(8, 10)}.</td><td style={L}>수입/지출</td><td style={C}>{row.in ? '수입' : '지출'}</td><td style={L}>구분</td><td style={C}>{row.class}</td></tr>
+          <tr><td style={L}>통장내역</td><td colSpan={6} style={C}>{row.bank_desc}</td></tr>
+          <tr><td style={L}>내용</td><td colSpan={6} style={C}>{row.content}</td></tr>
+          <tr><td style={L}>세목</td><td style={L}>수량</td><td style={L}>단가</td><td style={L}>지급방법</td><td colSpan={3} style={C}>{row.method}</td></tr>
+          {Array.from({ length: N + 1 }, (_, k) => {
+            const it = items[k]
+            const cells = <><td style={C}>{it?.[0]}</td><td style={C}>{it?.[1]}</td><td style={C}>{it?.[2]}</td></>
+            if (k === 0) return <tr key={k}>{cells}<td style={L}>증빙종류</td><td colSpan={3} style={C}>{kinds[0] ?? row.evidence[0] ?? ''}</td></tr>
+            if (k === 1) return <tr key={k}>{cells}<td colSpan={4} style={L}>증빙서류</td></tr>
+            if (k === 2) return (
+              <tr key={k}>{cells}
+                <td colSpan={4} rowSpan={N - 1} style={{ verticalAlign: 'middle', textAlign: 'center', padding: 10 }}>
+                  {rc?.image ? <img src={`/api/receipts/${rid}/image`} alt="영수증" style={{ maxWidth: '70%', maxHeight: 380 }} />
+                    : rc ? <pre style={{ display: 'inline-block', textAlign: 'left', margin: 0, fontSize: 10.5, lineHeight: 1.55, fontFamily: 'ui-monospace,Menlo,monospace', background: '#fff', border: '1px dashed #c9cfdb', padding: '10px 14px' }}>{rc.ocr_text}</pre>
+                    : <span className="small muted">{kinds.join(', ') || '과거거래내역서로 갈음'}</span>}
+                </td></tr>)
+            return <tr key={k}>{cells}</tr>
+          })}
+          <tr><td style={L}>총액</td><td colSpan={2} style={C}>{won(row.in || Math.abs(row.out))}</td></tr>
+          <tr style={{ height: 44 }}><td style={L}>비고</td><td colSpan={6} style={{ ...C, fontSize: 12 }}>{row.note}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+

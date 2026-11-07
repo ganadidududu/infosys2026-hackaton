@@ -237,8 +237,11 @@ def statement_view():
         out["csv"] = {"filename": lc["filename"], "header": h, "preview": b[:8], "rows": len(b), "mapping": lc["mapping"],
                       "auto": lc.get("auto", {}), "errors": csv_import.validate(lc["mapping"]), "parsed": len(tx), "skipped": sk[:20]}
     rows = [r for acc in ds["accounts"] for r in led["ledgers"][acc["id"]] if r["tx"] or r.get("transfer")]
+    imgs = {f.stem for f in RECEIPT_IMG.glob("*")} if RECEIPT_IMG.exists() else set()
+    rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
+                     **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
     out["statement"] = {"rows": rows, "accounts": {a["id"]: a["name"] for a in ds["accounts"]}, "projects": led["projects"],
-                        "counts": led["reconcile"]["counts"]}
+                        "counts": led["reconcile"]["counts"], "receipts": rcs}
     return out
 
 
@@ -299,7 +302,9 @@ def statement_sample():
 @app.get("/api/export/statement.docx")
 def export_statement_docx():
     ds, led = ledger_now()
-    return Response(docx_export.statement_docx(ds, led),
+    st = load_state()
+    rcs = {r["id"]: {**r, **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
+    return Response(docx_export.statement_docx(ds, led, rcs, RECEIPT_IMG),
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_q('수입지출내역서.docx')}"})
 
@@ -351,6 +356,17 @@ def receipt_edit(rid: str, body: dict = Body(...)):
     return {"ok": True}
 
 
+RECEIPT_IMG = BACKEND / "var" / "files" / "receipts"
+
+
+@app.get("/api/receipts/{rid}/image")
+def receipt_image(rid: str):
+    f = next(iter(sorted(RECEIPT_IMG.glob(f"{rid}.*"))), None) if RECEIPT_IMG.exists() else None
+    if not f:
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
 @app.post("/api/receipts/upload")
 async def receipt_upload(file: UploadFile = File(...), project: str = "", text: str = ""):
     data = await file.read()
@@ -373,6 +389,10 @@ async def receipt_upload(file: UploadFile = File(...), project: str = "", text: 
              "confidence": {"date": 0.9, "vendor": 0.7, "amount": 0.95, "items": 0.8}}
         st.setdefault("new_receipts", []).append(r)
         save_state(st)
+    if file.content_type and file.content_type.startswith("image"):
+        RECEIPT_IMG.mkdir(parents=True, exist_ok=True)
+        ext = Path(file.filename or "x.jpg").suffix.lower() or ".jpg"
+        (RECEIPT_IMG / f"{r['id']}{ext}").write_bytes(data)
     return {"ok": True, "receipt": r, "self_check": ocr.self_check(f)}
 
 

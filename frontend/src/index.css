@@ -125,3 +125,5 @@ textarea.input{resize:vertical;min-height:70px;line-height:1.55}
   .page{padding:16px 14px 50px}
   .hide-m{display:none !important}
 }
+table.form-t{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+table.form-t td{border:1px solid #333;padding:0 6px;height:27px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
