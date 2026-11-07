@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, md, useApi } from '../api'
 import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 
 export default function Checklist() {
   const { data, error, reload } = useApi('/checklist')
   const [view, setView] = useState<'event' | 'time'>('event')
+  const [adding, setAdding] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
   if (error) return <ErrorBox msg={error} />
   if (!data) return <Loading />
@@ -30,10 +32,23 @@ export default function Checklist() {
     <>
       <div className="ph">
         <div>
-          <div className="crumb">1 · 학기 전</div>
-          <h1>학기 체크리스트</h1>
-          <p>체크리스트 LLM이 기준안에서 행사별 의무를 뽑고, 코드가 조항 실존·인용을 검증한 뒤 선후 관계로 기한을 거꾸로 계산합니다.</p>
+          <div className="crumb">학기 스케줄러</div>
+          <h1>학기 일정과 기준안 체크리스트</h1>
+          <p>학과 일정을 넣으면 체크리스트 LLM이 기준안에서 행사별 의무를 뽑고, 코드가 조항 실존·인용을 검증한 뒤 선후 관계로 기한을 거꾸로 계산합니다.</p>
         </div>
+        <div className="row">
+          <input ref={fileRef} type="file" accept=".csv,.txt" hidden onChange={async (e) => {
+            const f = e.target.files?.[0]; if (!f) return
+            const fd = new FormData(); fd.append('file', f)
+            try { const r = await api('/schedule/upload', { body: fd }); toast(`일정 ${r.added}건 추가${r.skipped.length ? ` · ${r.skipped.length}행 건너뜀` : ''}`); reload() } catch (err: any) { toast(err.message, true) }
+            e.target.value = '' }} />
+          <a className="btn sm ghost" href="/api/schedule/sample.csv">일정 CSV 양식</a>
+          <button className="btn" onClick={() => fileRef.current?.click()}>일정 CSV 올리기</button>
+          <button className="btn b" onClick={() => setAdding(true)}>＋ 일정 추가</button>
+        </div>
+      </div>
+      <StageBar bar={data.bar} />
+      <div className="row" style={{ justifyContent: 'flex-end', margin: '0 0 12px' }}>
         <div className="seg"><button className={view === 'event' ? 'on' : ''} onClick={() => setView('event')}>행사별</button><button className={view === 'time' ? 'on' : ''} onClick={() => setView('time')}>주 단위 타임라인</button></div>
       </div>
       <div className="kpi" style={{ marginBottom: 16 }}>
@@ -53,7 +68,11 @@ export default function Checklist() {
               <div className="pad" style={{ borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div><b style={{ fontSize: 15 }}>{e.name}</b> <span className="small muted">· {e.type} · {e.date}</span>
                   <div className="row" style={{ gap: 4, marginTop: 6 }}>{e.flags.map((f: string) => <span key={f} className="tag t-a">{f}</span>)}</div></div>
-                <span className="small muted">{e.items.filter((i: any) => i.done).length}/{e.items.length}</span>
+                <span className="row" style={{ gap: 8 }}>
+                  {e.custom && <span className="tag t-b">학생회 추가</span>}
+                  <span className="small muted">{e.items.filter((i: any) => i.done).length}/{e.items.length}</span>
+                  {e.custom && <button className="btn sm ghost" title="일정 삭제" onClick={async () => { if (!confirm(`${e.name} 일정을 지울까요?`)) return; await api(`/schedule/events/${e.id}`, { method: 'DELETE' }); reload() }}>✕</button>}
+                </span>
               </div>
               <div>
                 {e.items.map((it: any) => <Item key={it.id} it={it} toggle={toggle} setLead={setLead} />)}
@@ -77,6 +96,51 @@ export default function Checklist() {
           ))}
         </div>
       )}
+      {adding && <AddEvent types={data.types} flags={data.flags} close={() => setAdding(false)} reload={reload} />}
+    </>
+  )
+}
+
+export function StageBar({ bar }: { bar: any[] }) {
+  return (
+    <div className="card pad" style={{ marginBottom: 16, overflowX: 'auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${bar.length},minmax(110px,1fr))`, gap: 8 }}>
+        {bar.map((s, i) => (
+          <div key={s.k}>
+            <div style={{ height: 6, borderRadius: 999, background: s.done ? 'var(--green)' : 'var(--gray-soft)', marginBottom: 10 }} />
+            <div className="small" style={{ fontWeight: 700 }}>{i + 1}. {s.k}</div>
+            <div className="xs muted num">{s.d}</div>
+            {s.c && <Cite c={s.c} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AddEvent({ types, flags, close, reload }: any) {
+  const toast = useToast()
+  const [f, setF] = useState<any>({ name: '', date: '', type: types[0], flags: [] })
+  async function save() {
+    try { await api('/schedule/events', { body: f }); toast(`${f.name} 일정을 추가했습니다`); reload(); close() } catch (e: any) { toast(e.message, true) }
+  }
+  return (
+    <>
+      <div className="scrim" onClick={close} />
+      <div role="dialog" className="card" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 41, width: 'min(460px,92vw)', padding: 24, boxShadow: '0 20px 60px rgba(14,21,37,.25)' }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}><h3 style={{ fontSize: 18 }}>학과 일정 추가</h3><button className="btn ghost" onClick={close}>✕</button></div>
+        <div className="grid" style={{ gap: 12 }}>
+          <label className="field">행사명<input className="input" autoFocus placeholder="예: 학과 체육대회" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+          <label className="field">날짜<input className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
+          <label className="field">행사 유형<select className="input" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{types.map((t: string) => <option key={t}>{t}</option>)}</select></label>
+          <div className="field">특이사항
+            <div className="row" style={{ gap: 14 }}>{flags.map((fl: string) => (
+              <label key={fl} className="row small" style={{ gap: 6 }}><input type="checkbox" checked={f.flags.includes(fl)} onChange={(e) => setF({ ...f, flags: e.target.checked ? [...f.flags, fl] : f.flags.filter((x: string) => x !== fl) })} />{fl}</label>))}</div>
+          </div>
+          <div className="xs muted">유형과 특이사항에 따라 기준안 의무(예: 참가비 ≤ 지출, 예약금 이체내역서, 계산서 6항목)가 자동으로 붙습니다.</div>
+          <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn" onClick={close}>취소</button><button className="btn b" disabled={!f.name.trim() || !f.date} onClick={save}>추가</button></div>
+        </div>
+      </div>
     </>
   )
 }

@@ -1,188 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, useApi, won } from '../api'
-import { Cite, Disp, ErrorBox, Loading, Ring, VERDICT, Verdict, useToast } from '../ui/ui'
+import { Cite, Disp, VERDICT, Verdict, useToast } from '../ui/ui'
 
-const STEPS = ['감사 패킷 구성', '감사 LLM 1차 호출', '감사 LLM 2차 호출', '코드 검증', '선례 처분 · 경고 규칙']
-const ORDER: Record<string, number> = { 미충족: 0, '확인 필요': 1, 충족: 3 }
+export const ORDER: Record<string, number> = { 미충족: 0, '확인 필요': 1, 충족: 3 }
 
-function vkey(f: any) {
+export function vkey(f: any) {
   if (f.verdict === '미충족' && f.disposition?.type === '신규 유형') return '신규 유형'
   return f.verdict
 }
 
-export default function AuditResult() {
-  const { data, error, loading, reload } = useApi('/audit')
-  const { data: kijun } = useApi<any[]>('/kijun')
-  const [running, setRunning] = useState(-1)
-  const toast = useToast()
-  const titles = useMemo(() => Object.fromEntries((kijun ?? []).map((c: any) => [c.id, c.title])), [kijun])
-
-  async function run() {
-    setRunning(0)
-    const p = api('/audit/run', { method: 'POST' })
-    for (let i = 1; i <= STEPS.length; i++) { await new Promise((r) => setTimeout(r, 420)); setRunning(i) }
-    try { await p; await reload(); toast('감사 판단 초안을 만들었습니다') } catch (e: any) { toast(e.message, true) }
-    setRunning(-1)
-  }
-
-  if (loading && !data) return <Loading />
-  if (error) return <ErrorBox msg={error} />
-
-  return (
-    <>
-      <div className="ph">
-        <div>
-          <div className="crumb">4 · 감사 판단 {data?.ran && <>› {data.mode === 'live' ? 'LLM 라이브' : '재생 모드'} · 2회 호출 · 코드 검증 완료 · {data.ran_at?.replace('T', ' ')}</>}</div>
-          <h1>감사 결과지</h1>
-          <p>감사 LLM은 조항별 판정과 “어느 선례와 같은지”만 답합니다. 감점은 선례에서 코드가 가져오고(4부 23조), 확정은 감사인단이 합니다.</p>
-        </div>
-        <button className="btn b" onClick={run} disabled={running >= 0}>{running >= 0 ? <><span className="spin" /> 실행 중</> : data?.ran ? '다시 실행' : '감사 판단 실행'}</button>
-      </div>
-
-      {running >= 0 && (
-        <div className="card pad" style={{ marginBottom: 16 }}>
-          <div className="steps">
-            {STEPS.map((s, i) => <span key={s} className={`s ${i < running ? 'done' : i === running ? 'run' : ''}`}>{i < running ? '✓' : i === running ? <span className="spin" /> : i + 1} {s}</span>)}
-          </div>
-        </div>
-      )}
-
-      {!data?.ran ? (
-        <div className="card" style={{ padding: '56px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: 40 }}>🔎</div>
-          <h2 style={{ fontSize: 20, margin: '10px 0 8px' }}>아직 감사 판단을 실행하지 않았습니다</h2>
-          <p className="ink2 small" style={{ maxWidth: 560, margin: '0 auto 20px', lineHeight: 1.7 }}>
-            사업마다 감사 패킷(기준안 원문 · 질의·답변 · 감사자료 · 코드 검사 결과 · 같은 조항의 선례)을 만들어 감사 LLM에 두 번 보냅니다.
-            인용이 서류에 없거나 두 번의 판정이 다르면 자동으로 ‘확인 필요’가 됩니다.
-          </p>
-          <button className="btn b" onClick={run} disabled={running >= 0}>감사 판단 실행</button>
-        </div>
-      ) : <Result data={data} titles={titles} reload={reload} />}
-    </>
-  )
-}
-
-function Result({ data, titles, reload }: { data: any; titles: Record<string, string>; reload: () => void }) {
-  const t = data.totals
-  const packets = data.packets as any[]
-  const [pid, setPid] = useState<string>(() => {
-    const first = data.findings.find((f: any) => f.verdict !== '충족')
-    return first?.packet ?? packets[0].id
-  })
-  const [onlyIssues, setOnlyIssues] = useState(true)
-  const [sel, setSel] = useState<string | null>(null)
-  const checksBy = useMemo(() => Object.fromEntries(data.checks.map((c: any) => [c.id, c])), [data.checks])
-  const packet = packets.find((p) => p.id === pid)!
-  const all = data.findings as any[]
-  const issueNo = useMemo(() => {
-    const m: Record<string, number> = {}
-    let n = 0
-    all.filter((f) => f.verdict !== '충족').forEach((f) => { m[f.id] = ++n })
-    return m
-  }, [all])
-  const list = all.filter((f) => f.packet === pid && (!onlyIssues || f.verdict !== '충족'))
-    .sort((a, b) => (ORDER[a.verdict] ?? 2) - (ORDER[b.verdict] ?? 2))
-  const listKey = list.map((f) => f.id).join('|')
-  useEffect(() => { if (!sel || !list.find((f) => f.id === sel)) setSel(list[0]?.id ?? null) }, [pid, onlyIssues, listKey]) // eslint-disable-line
-  const cur = all.find((f) => f.id === sel)
-  const [advance, setAdvance] = useState(false)
-  useEffect(() => {
-    if (!advance) return
-    setAdvance(false)
-    const next = list.find((f) => !f.confirmed && f.verdict !== '충족' && f.id !== sel) ?? all.find((f) => !f.confirmed && f.verdict !== '충족')
-    if (next) { setPid(next.packet); setSel(next.id) }
-  }, [data]) // eslint-disable-line
-
-  const bv = t.by_verdict
-  const total = t.clauses || 1
-  const newCnt = all.filter((f) => vkey(f) === '신규 유형').length
-  const segs = [
-    ['충족', bv['충족'] ?? 0], ['미충족', (bv['미충족'] ?? 0) - newCnt], ['확인 필요', bv['확인 필요'] ?? 0], ['신규 유형', newCnt],
-  ] as const
-  const issuesPer = (id: string) => all.filter((f) => f.packet === id && f.verdict !== '충족').length
-
-  return (
-    <>
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(250px,280px) 1fr minmax(280px,320px)', marginBottom: 16 }}>
-        <div className="card pad row" style={{ gap: 18 }}>
-          <Ring value={t.total} label={t.pending_new || t.pending_check ? '총 감점(초안)' : '총 감점'} frac={Math.min(1, t.total / 10)} />
-          <div className="small">
-            <div className="muted">사례 감점 + 경고 감점</div>
-            <div style={{ marginTop: 6, lineHeight: 1.7 }}><b>{t.case_points}</b> + <b>{t.warning_points}</b> 점<br />
-              {t.pending_new > 0 && <span style={{ color: 'var(--violet)', fontWeight: 700 }}>신규 유형 {t.pending_new}건 논의 대기<br /></span>}
-              {t.pending_check > 0 && <span style={{ color: 'var(--amber-ink)', fontWeight: 700 }}>확인 필요 {t.pending_check}건</span>}
-            </div>
-          </div>
-        </div>
-        <div className="card pad">
-          <div className="sec-t">조항별 판정 <small>{t.clauses}개 조항 · {packets.length}개 패킷</small></div>
-          <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', background: 'var(--gray-soft)', marginBottom: 12 }}>
-            {segs.map(([k, n]) => <i key={k} style={{ width: `${(n / total) * 100}%`, background: VERDICT[k].color }} />)}
-          </div>
-          <div className="row small ink2" style={{ gap: 18, flexWrap: 'wrap' }}>
-            {segs.map(([k, n]) => <span key={k} className="row" style={{ gap: 6 }}><i style={{ width: 9, height: 9, borderRadius: 3, background: VERDICT[k].color }} />{k}<b style={{ color: 'var(--ink)' }}>{n}</b></span>)}
-          </div>
-          <div className="xs muted" style={{ marginTop: 10 }}>인용 불일치·2회 판정 불일치는 코드가 자동으로 ‘확인 필요’로 바꿉니다.</div>
-        </div>
-        <div className="card pad">
-          <div className="sec-t"><span>경고 {t.warnings}회 · 이번 회계기간</span><span className="tag t-a">경고 감점 {t.warning_points}점</span></div>
-          <div className="row" style={{ gap: 6, marginBottom: 10 }}>
-            {Array.from({ length: Math.max(5, t.warnings + 1) }, (_, i) => (
-              <i key={i} style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', fontStyle: 'normal', fontSize: 12,
-                background: i < t.warnings ? 'var(--amber-soft)' : 'var(--gray-soft)', color: i < t.warnings ? 'var(--amber-ink)' : 'var(--mute)',
-                fontWeight: i < t.warnings ? 800 : 400, outline: i < t.warnings && i >= 2 ? '2px solid var(--red)' : 'none', outlineOffset: -2 }}>{i + 1}</i>
-            ))}
-          </div>
-          <div className="mono muted">max(0, w − 2) = max(0, {t.warnings} − 2) = {t.warning_points} · <Cite c="4부 26조" /></div>
-        </div>
-      </div>
-
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(360px,440px)', alignItems: 'start' }}>
-        <div className="card">
-          <div className="tabs">
-            {packets.map((p) => (
-              <button key={p.id} className={p.id === pid ? 'on' : ''} onClick={() => setPid(p.id)}>
-                {p.id === 'ALL' ? '학과 전체' : `사업 ${p.id.slice(1)} · ${p.title}`}
-                {issuesPer(p.id) > 0 && <span className="tag t-r" style={{ marginLeft: 6, padding: '1px 6px' }}>{issuesPer(p.id)}</span>}
-              </button>
-            ))}
-          </div>
-          <DocViewer packet={packet} findings={all.filter((f) => f.packet === pid)} sel={sel} setSel={setSel} issueNo={issueNo} />
-        </div>
-
-        <div className="grid" style={{ position: 'sticky', top: 76 }}>
-          <div className="card" style={{ padding: 6 }}>
-            <div className="row" style={{ justifyContent: 'space-between', padding: '8px 10px 6px' }}>
-              <b className="small">{packet.title} · 판정 {all.filter((f) => f.packet === pid).length}건</b>
-              <div className="seg"><button className={onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(true)}>지적만</button><button className={!onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(false)}>전체</button></div>
-            </div>
-            <div style={{ maxHeight: 300, overflow: 'auto' }}>
-              {list.length === 0 && <div className="empty small">지적 사항이 없습니다. 모든 조항이 충족입니다.</div>}
-              {list.map((f) => {
-                const vk = vkey(f)
-                const msg = f.checks.map((c: string) => checksBy[c]?.message).find(Boolean)
-                return (
-                  <button key={f.id} onClick={() => setSel(f.id)} style={{ all: 'unset', cursor: 'pointer', display: 'grid', gridTemplateColumns: '22px 1fr auto', gap: 10, padding: 12, borderRadius: 10, width: '100%', boxSizing: 'border-box', background: sel === f.id ? '#f6f8fc' : undefined, outline: sel === f.id ? '1px solid var(--line)' : undefined }}>
-                    <span style={{ width: 22, height: 22, borderRadius: 6, background: VERDICT[vk]?.color, color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center' }}>{issueNo[f.id] ?? '✓'}</span>
-                    <span>
-                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, lineHeight: 1.4 }}>{headline(f, titles, msg)}</span>
-                      <span className="xs muted">{f.clause} · {titles[f.clause.replace(/\s*[①-⑩]$/, '')] ?? ''}{f.confirmed && ' · 확정됨'}</span>
-                    </span>
-                    {f.verdict === '충족' ? <Verdict v="충족" /> : <Disp d={f.disposition} verdict={f.verdict} />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-          {cur && <Detail f={cur} data={data} titles={titles} checksBy={checksBy} reload={() => { setAdvance(true); reload() }} />}
-        </div>
-      </div>
-    </>
-  )
-}
-
-function headline(f: any, titles: Record<string, string>, msg?: string) {
+export function headline(f: any, titles: Record<string, string>, msg?: string) {
   if (f.reasons.some((r: string) => r.startsWith('2회 판정'))) return `2회 판정 불일치 · ${titles[f.clause] ?? f.clause}`
   if (f.reasons.some((r: string) => r.startsWith('인용'))) return `인용 검증 실패 · ${titles[f.clause] ?? f.clause}`
   if (msg) return msg
@@ -191,7 +19,7 @@ function headline(f: any, titles: Record<string, string>, msg?: string) {
 }
 
 // ---------- 왼쪽: 서류 뷰어 (카피킬러식 하이라이트) ----------
-function DocViewer({ packet, findings, sel, setSel, issueNo }: any) {
+export function DocViewer({ packet, findings, sel, setSel, issueNo }: any) {
   const [view, setView] = useState<'docs' | 'ledger' | 'checks' | 'packet'>('docs')
   // 인용 위치 찾기: 원문에 있으면 그 문장, 없으면(인용 불일치) 같은 칸으로 시작하는 줄을 '불일치'로 표시
   const quotes: { doc: string; quote: string; f: any; bad?: boolean }[] = []
@@ -297,7 +125,7 @@ function DocViewer({ packet, findings, sel, setSel, issueNo }: any) {
 }
 
 // ---------- 오른쪽: 근거 리포트 (리드레이식) ----------
-function Detail({ f, data, titles, checksBy, reload }: any) {
+export function Detail({ f, data, titles, checksBy, reload, base }: any) {
   const toast = useToast()
   const [edit, setEdit] = useState(false)
   const [pts, setPts] = useState(1)
@@ -312,7 +140,7 @@ function Detail({ f, data, titles, checksBy, reload }: any) {
   const ok = (b: boolean | null | undefined) => (b === false ? 'bad' : 'ok')
 
   async function decide(body: any, m: string) {
-    try { await api(`/audit/finding/${encodeURIComponent(f.id)}`, { body }); toast(m); setEdit(false); reload() } catch (e: any) { toast(e.message, true) }
+    try { await api(`${base}/finding/${encodeURIComponent(f.id)}`, { body }); toast(m); setEdit(false); reload() } catch (e: any) { toast(e.message, true) }
   }
 
   return (

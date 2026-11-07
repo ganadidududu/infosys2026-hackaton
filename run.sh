@@ -2,10 +2,8 @@
 # Auditon 한 번에 실행: 프론트엔드를 빌드하고 백엔드(8000)가 화면까지 함께 띄운다.
 set -e
 cd "$(dirname "$0")"
-if [ ! -d backend/.venv ]; then
-  python3 -m venv backend/.venv
-  backend/.venv/bin/pip install -q -r backend/requirements.txt
-fi
+[ -d backend/.venv ] || python3 -m venv backend/.venv
+backend/.venv/bin/pip install -q --disable-pip-version-check -r backend/requirements.txt
 if command -v npm >/dev/null 2>&1; then
   [ -d frontend/node_modules ] || (cd frontend && npm install)
   (cd frontend && npm run build)

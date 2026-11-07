@@ -219,6 +219,7 @@ def build(ds: dict, st: dict) -> dict:
                                  "note": "현금의 유입과 유출이 없는 거래" + (f" · 산출 근거: {tr['note']}" if tr["note"] else ""),
                                  "tx": None, "transfer": True})
         for row in rows:
+            row["account"] = acc["id"]
             row["code"] = f"{row['project_no']}-{row['seq']}" if row["project_no"] is not None else f"?-{row['seq']}"
         ledgers[acc["id"]] = rows
 

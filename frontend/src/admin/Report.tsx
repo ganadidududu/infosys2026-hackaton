@@ -13,7 +13,7 @@ export default function Report() {
   useEffect(() => { if (data) setOps(data.opinions) }, [data])
   if (error) return <ErrorBox msg={error} />
   if (!data) return <Loading />
-  if (!data.totals) return <div className="card empty">감사 판단을 먼저 실행하세요. <Link to="/admin/audit" className="btn sm b" style={{ marginLeft: 8 }}>감사 결과지로</Link></div>
+  if (!data.totals) return <div className="card empty">감사 판단을 먼저 실행하세요. <Link to="/admin/grade" className="btn sm b" style={{ marginLeft: 8 }}>모의 채점으로</Link></div>
 
   const h = data.fields.hours
   const minH = 20
@@ -34,7 +34,7 @@ export default function Report() {
   return (
     <>
       <div className="ph">
-        <div><div className="crumb">5 · 감사 후</div><h1>감사보고서 · 이의 · 공시</h1>
+        <div><div className="crumb"><Link to="/admin/grade" style={{ textDecoration: 'underline' }}>모의 채점</Link> › {data.record && <Link to={`/admin/grade/${data.record.id}`} style={{ textDecoration: 'underline' }}>{data.record.title}</Link>} › 감사 후</div><h1>감사보고서 · 이의 · 공시</h1>
           <p>감사보고서 항목은 <Cite c="4부 17조" />, 감사의견은 <Cite c="4부 18조" />의 4가지 평가로 씁니다. 등급은 없습니다.</p></div>
         <div className="row">
           {!data.sent && <button className="btn b" disabled={data.unconfirmed > 0} title={data.unconfirmed ? '확정하지 않은 항목이 있습니다' : ''} onClick={() => act('/report/send', {}, '감사보고서를 송부했습니다')}>감사보고서 송부</button>}
@@ -54,7 +54,7 @@ export default function Report() {
             </div>
           ))}
         </div>
-        {data.unconfirmed > 0 && <div className="small" style={{ marginTop: 12, color: 'var(--amber-ink)' }}>확정하지 않은 항목 {data.unconfirmed}건(확인 필요·신규 유형 포함)이 있습니다. <Link to="/admin/audit" style={{ textDecoration: 'underline' }}>감사 결과지에서 확정</Link>해야 송부할 수 있습니다.</div>}
+        {data.unconfirmed > 0 && <div className="small" style={{ marginTop: 12, color: 'var(--amber-ink)' }}>확정하지 않은 항목 {data.unconfirmed}건(확인 필요·신규 유형 포함)이 있습니다. <Link to={`/admin/grade/${data.record?.id}`} style={{ textDecoration: 'underline' }}>채점 페이지에서 확정</Link>해야 송부할 수 있습니다.</div>}
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', alignItems: 'start' }}>

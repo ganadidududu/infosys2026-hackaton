@@ -126,3 +126,30 @@ def test_llm_quote_mismatch_and_disagreement_become_check_needed():
     assert by[("과잠 공동구매", "3부 42조")]["verdict"] == "확인 필요"
     assert any(r.startswith("인용") for r in by[("과잠 공동구매", "3부 42조")]["reasons"])
     assert by[("MT", "3부 40조")]["verdict"] == "확인 필요"
+
+
+# ---------- 기중 거래 장부 CSV 자동 매핑 ----------
+from ledger import csv_import  # noqa: E402
+
+
+def test_csv_bank_style_headers():
+    text = "거래일시,적요,입금액,출금액,거래후잔액\n2026.03.03 12:00,홍길동 학생회비,750000,,750000\n2026.03.04 09:10,다이소,,\"47,300\",702700\n"
+    h, b = csv_import.read_rows(text)
+    m = csv_import.auto_map(h, b)
+    assert {k: v["header"] for k, v in m.items() if k in ("date", "desc", "in", "out")} == {"date": "거래일시", "desc": "적요", "in": "입금액", "out": "출금액"}
+    tx, sk = csv_import.to_transactions(h, b, m)
+    assert [(t["in"], t["out"]) for t in tx] == [(750000, 0), (0, 47300)] and not sk
+
+
+def test_csv_signed_amount_and_cp949():
+    raw = "일자,내용,금액,비고\n2026-03-03,학생회비,750000,\n2026-03-04,다이소,-47300,소모품\n".encode("cp949")
+    h, b = csv_import.read_rows(csv_import.decode(raw))
+    m = csv_import.auto_map(h, b)
+    assert not csv_import.validate(m) and m["amount"]["header"] == "금액"
+    tx, _ = csv_import.to_transactions(h, b, m)
+    assert tx[1]["out"] == 47300
+
+
+def test_csv_missing_amount_is_reported():
+    h, b = csv_import.read_rows("일자,내용\n2026-03-03,학생회비\n")
+    assert csv_import.validate(csv_import.auto_map(h, b))

@@ -6,7 +6,7 @@ import { Cite, ErrorBox, Loading, useToast } from '../ui/ui'
 const INVOICE = ['① 업체·책임자 이름·서명', '② 책임자 연락처', '③ 견적 산출 근거(세목)', '④ 집행부 담당자 이름·서명·연락처', '⑤ 일자·수단·총액', '⑥ 법적 책임 경고·담당자 서명']
 const STATUS_TAG: Record<string, string> = { '자동 확정': 't-g', '확정(감사인)': 't-g', '확인 필요': 't-a', '통장에 없는 영수증': 't-r', 미매칭: 't-n' }
 
-export default function Receipts() {
+export default function Receipts({ embedded }: { embedded?: boolean }) {
   const { data, error, reload } = useApi('/receipts')
   const [sel, setSel] = useState<string | null>(null)
   const [filter, setFilter] = useState('전체')
@@ -23,8 +23,8 @@ export default function Receipts() {
   return (
     <>
       <div className="ph">
-        <div><div className="crumb">2 · 학기 중</div><h1>영수증함</h1>
-          <p>결제할 때마다 찍어 올립니다. 로컬 OCR이 읽고 자기 검산을 하며, 신뢰도가 낮은 칸만 노란색으로 표시합니다.</p></div>
+        {embedded ? <p className="small ink2" style={{ margin: 0 }}>결제할 때마다 찍어 올립니다. 로컬 OCR이 일시·업체·금액·세목·증빙 종류를 읽고 자기 검산을 하며, 신뢰도가 낮은 칸만 노란색으로 표시합니다.</p> : <div><div className="crumb">학기 중</div><h1>영수증함</h1>
+          <p>결제할 때마다 찍어 올립니다. 로컬 OCR이 읽고 자기 검산을 하며, 신뢰도가 낮은 칸만 노란색으로 표시합니다.</p></div>}
         <button className="btn b" onClick={() => setUp(true)}>＋ 영수증 올리기</button>
       </div>
       <div className="kpi" style={{ marginBottom: 16 }}>
