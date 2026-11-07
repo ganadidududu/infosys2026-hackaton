@@ -92,7 +92,10 @@ function ReceiptDrawer({ r, close, reload }: any) {
             </div>
             <div>
               <div className="sec-t">인식한 원문</div>
-              <pre style={{ margin: 0, height: 420, overflow: 'auto', background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 14, fontSize: 12.5, lineHeight: 1.85, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace,Menlo,monospace' }}>{r.ocr_text}</pre>
+              {/* 줄 수에 맞춰 줄 간격을 늘려 칸 높이를 채운다 */}
+              <div style={{ height: 420, overflow: 'auto', background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', fontSize: 12.5, lineHeight: 1.5, fontFamily: 'ui-monospace,Menlo,monospace' }}>
+                {r.ocr_text.split('\n').map((l: string, i: number) => <div key={i} style={{ whiteSpace: 'pre-wrap', flexShrink: 0 }}>{l}</div>)}
+              </div>
             </div>
           </div>
           <div>
