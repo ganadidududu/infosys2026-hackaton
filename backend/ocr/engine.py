@@ -344,13 +344,19 @@ def parse(text: str) -> dict:
 
 
 def ledger_items(f: dict) -> list[dict]:
-    """저장할 세목: 품목 뒤에 그 품목의 할인을 음수 줄로 붙이고, 영수증 전체 할인은 맨 끝에. 세목 합 = 합계."""
+    """저장할 세목: 품목 할인은 그 품목 단가에 반영(9,980 − 3,000 → 6,980), 영수증 전체 할인은 맨 끝 음수 줄. 세목 합 = 합계."""
     out = []
     ds = f.get("discounts", [])
     for k, it in enumerate(f["items"]):
-        out.append(it)
-        out += [{"name": f"{it['name']} 할인" + (f"({d['name']})" if d["name"] else ""), "qty": 1, "price": d["amount"]}
-                for d in ds if d.get("item") == k]
+        mine = [d for d in ds if d.get("item") == k]
+        off = -sum(d["amount"] for d in mine)
+        net = it["qty"] * it["price"] - off
+        if mine and net >= 0 and net % it["qty"] == 0:
+            out.append({"name": f"{it['name']} (할인 {off:,}원 반영)", "qty": it["qty"], "price": net // it["qty"]})
+        else:  # 단가로 나누어 떨어지지 않으면 할인을 바로 아래 음수 줄로
+            out.append(it)
+            out += [{"name": f"{it['name']} 할인" + (f"({d['name']})" if d["name"] else ""), "qty": 1, "price": d["amount"]}
+                    for d in mine]
     out += [{"name": d["name"] or "할인", "qty": 1, "price": d["amount"]} for d in ds if d.get("item") is None]
     return out
 

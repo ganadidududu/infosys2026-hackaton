@@ -60,8 +60,7 @@ def test_item_discount_becomes_line_under_its_item():
     f = ocr.parse(ocr.fields_to_text(j))
     rows = ocr.ledger_items(f)
     assert [(r["name"], r["price"]) for r in rows] == [
-        ("마라탕 44.7g", 1680), ("(뉴)강성사새우(팩)", 9980),
-        ("(뉴)강성사새우(팩) 할인([델리] 쓱데이 행사)", -3000), ("싱그림치킨무200g", 680)]
+        ("마라탕 44.7g", 1680), ("(뉴)강성사새우(팩) (할인 3,000원 반영)", 6980), ("싱그림치킨무200g", 680)]
     assert sum(r["qty"] * r["price"] for r in rows) == f["amount"] == 9340
     assert all(c["ok"] for c in ocr.self_check(f))
 
@@ -82,8 +81,12 @@ def test_local_pos_discount_attaches_to_item_above():
     text = "\n".join(["emart 왕십리점", "[구매]2026-11-01 20:11", "02 (뉴)강성사새우(팩)", "2140830099803 9,980 1 9,980",
                       "[델리] 쓱데이 행사 -3,000", "03 싱그림치킨무200g", "8809053273124 680 1 680", "합 계 7,660"])
     rows = ocr.ledger_items(ocr.parse(text))
-    assert [(r["price"]) for r in rows] == [9980, -3000, 680]
-    assert rows[1]["name"] == "(뉴)강성사새우(팩) 할인([델리] 쓱데이 행사)"
+    assert [(r["name"], r["price"]) for r in rows] == [("(뉴)강성사새우(팩) (할인 3,000원 반영)", 6980), ("싱그림치킨무200g", 680)]
+
+
+def test_indivisible_item_discount_stays_as_negative_line():
+    f = {"items": [{"name": "생수", "qty": 3, "price": 1000}], "discounts": [{"name": "행사", "amount": -500, "item": 0}]}
+    assert [r["price"] for r in ocr.ledger_items(f)] == [1000, -500]
 
 
 def test_upload_uses_gemini_with_shrunk_image(monkeypatch):
