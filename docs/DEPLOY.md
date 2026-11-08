@@ -20,6 +20,8 @@
 | 숫자(대사·감점·경고)는 결정적 코드 | `reconcile/`, `audit/engine.py` |
 | 배포 후 헬스 체크 실패 시 이전 버전으로 자동 되돌림 | `deploy/update.sh` |
 | 푸시마다 테스트·빌드·이미지 헬스 체크 | `.github/workflows/ci.yml` |
+| 서버가 스스로 배포(2분마다 main 확인, 실패 시 되돌림) | `deploy/auto-update.sh` |
+| 체크리스트 LLM 실패 시 검수된 의무 목록으로 대체, 결과는 유형별로 저장 | `backend/checklist/llm.py` |
 | S3 백업(SSE) 10분 + 하루 스냅숏 | `deploy/backup.sh`, systemd timer |
 | CORS를 화면 주소로만 제한 | `AUDITON_CORS` |
 
@@ -52,9 +54,16 @@ Workers & Pages → Pages → GitHub 연결 → 이 저장소
 
 (Pages 없이 터널 주소 하나로 화면+API를 함께 써도 된다. 컨테이너가 화면도 띄운다.)
 
-## 3. 업데이트
+## 3. 업데이트 (자동)
+EC2가 2분마다 GitHub `main`을 확인해 새 커밋이 있으면 스스로 받아서 다시 빌드한다(`deploy/auto-update.sh`, systemd timer).
+새 버전이 헬스 체크(버전 일치)를 통과하지 못하면 이전 버전으로 되돌린다. 기록: `var/deploy.log`.
+서버로 들어오는 포트는 여전히 SSH뿐이다(서버가 GitHub로 나가서 가져옴).
+
 ```bash
-cd ~/auditon && PROFILE=tunnel bash deploy/update.sh
+echo tunnel > ~/auditon/.deploy-profile        # 도메인 없으면 quick
+systemctl list-timers | grep auditon           # 타이머 확인
+tail ~/auditon/var/deploy.log                  # 배포·되돌림 기록
+cd ~/auditon && PROFILE=tunnel bash deploy/update.sh   # 수동 배포
 ```
 
 ## 로컬에서 그대로 돌려 보기

@@ -111,6 +111,25 @@ def ledger_now():
     return ds, build(ds, load_state())
 
 
+@app.on_event("startup")
+def _warm_checklist():
+    """live 모드면 체크리스트 LLM 결과를 서버 시작 때 미리 받아 둔다(첫 화면이 느리지 않게). 실패해도 서버는 뜬다."""
+    from checklist import llm as cl
+    if cl.mode() != "live":
+        return
+
+    def run():
+        try:
+            ds = load_ds()
+            for ev in ds.get("schedule", []):
+                cl.extract_live(ev)
+            log.info(json.dumps({"warm": "checklist", "ok": True}))
+        except Exception as e:  # noqa: BLE001
+            log.info(json.dumps({"warm": "checklist", "ok": False, "err": type(e).__name__}))
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 # ---------------- 헬스 체크 ----------------
 @app.get("/api/health")
 def health():
@@ -127,8 +146,10 @@ def health():
     ok = writable and DS_PATH.exists() and KIJUN_MD.exists()
     from audit.llm import AUDIT_MODEL
     from core.llm_client import provider
+    from checklist.llm import checklist_model
     body = {"ok": ok, "version": os.environ.get("AUDITON_VERSION", "dev"), "dataset": DATASET,
-            "llm": llm_mode(), "llm_provider": provider(), "audit_model": AUDIT_MODEL if llm_mode() == "live" else None, "ocr": ocr.engine_name(), "storage_writable": writable,
+            "llm": llm_mode(), "llm_provider": provider(),
+            "checklist_model": checklist_model() if llm_mode() == "live" else None, "audit_model": AUDIT_MODEL if llm_mode() == "live" else None, "ocr": ocr.engine_name(), "storage_writable": writable,
             "uptime_s": round(time.time() - STARTED)}
     if not ok:
         raise HTTPException(503, detail=body)

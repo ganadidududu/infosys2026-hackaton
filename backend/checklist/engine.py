@@ -54,7 +54,15 @@ FLAG_GROUPS = {"예약금": "예약금", "세목 불가 업체": "세목 불가 
 
 
 def extract(event: dict) -> list[dict]:
-    """체크리스트 LLM 자리(재생 모드). 행사 유형·특이사항으로 의무를 고른다."""
+    """행사 → 의무. live 모드면 체크리스트 LLM(checklist/llm.py), 아니면(또는 실패하면) 검수된 라이브러리.
+    '모든 사업' 공통 의무는 항상 라이브러리에서 붙인다(사업번호·사업개요서·증빙)."""
+    from checklist import llm as cl
+    if cl.mode() == "live":
+        obls = cl.extract_live(event)
+        if obls:
+            base = [{**o, "group": "모든 사업"} for o in OBLIGATION_LIBRARY["모든 사업"]]
+            have = {o["key"] for o in base}
+            return base + [o for o in obls if o["key"] not in have]
     groups = ["모든 사업"] + TYPE_GROUPS.get(event["type"], []) + [FLAG_GROUPS[f] for f in event.get("flags", []) if f in FLAG_GROUPS]
     out = []
     for g in groups:
