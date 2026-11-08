@@ -488,7 +488,7 @@ async def receipt_upload(file: UploadFile = File(...), project: str = "", text: 
         st = load_state()
         n = len(DS["receipts"]) + len(st.get("new_receipts", [])) + 1
         r = {"id": f"R{n:03d}", "project": project or "미지정", "date": f.get("date", date.today().isoformat()),
-             "vendor": f.get("vendor", ""), "amount": f.get("amount", 0), "items": f["items"], "has_items": f["has_items"],
+             "vendor": f.get("vendor", ""), "amount": f.get("amount", 0), "items": ocr.ledger_items(f), "has_items": f["has_items"],
              "kind": "카드전표" if f.get("card_last4") else "현금영수증", "pay": "카드" if f.get("card_last4") else "계좌이체",
              "card_last4": f.get("card_last4"), "installment": f.get("installment", 0), "points": f.get("points", 0),
              "invoice": None, "attachments": [], "ocr_text": ocr_text,

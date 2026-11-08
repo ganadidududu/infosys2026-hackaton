@@ -51,6 +51,28 @@ def test_fields_round_trip_through_parser():
     assert all(c["ok"] for c in ocr.self_check(f))
 
 
+def test_item_discount_becomes_line_under_its_item():
+    j = {"vendor": "이마트 왕십리점", "date": "2026-11-01", "amount": 9340, "supply": 8491, "vat": 849,
+         "items": [{"name": "마라탕 44.7g", "qty": 1, "price": 1680},
+                   {"name": "(뉴)강성사새우(팩)", "qty": 1, "price": 9980, "discount": 3000, "discount_name": "[델리] 쓱데이 행사"},
+                   {"name": "싱그림치킨무200g", "qty": 1, "price": 680}]}
+    f = ocr.parse(ocr.fields_to_text(j))
+    rows = ocr.ledger_items(f)
+    assert [(r["name"], r["price"]) for r in rows] == [
+        ("마라탕 44.7g", 1680), ("(뉴)강성사새우(팩)", 9980),
+        ("(뉴)강성사새우(팩) 할인([델리] 쓱데이 행사)", -3000), ("싱그림치킨무200g", 680)]
+    assert sum(r["qty"] * r["price"] for r in rows) == f["amount"] == 9340
+    assert all(c["ok"] for c in ocr.self_check(f))
+
+
+def test_local_pos_discount_attaches_to_item_above():
+    text = "\n".join(["emart 왕십리점", "[구매]2026-11-01 20:11", "02 (뉴)강성사새우(팩)", "2140830099803 9,980 1 9,980",
+                      "[델리] 쓱데이 행사 -3,000", "03 싱그림치킨무200g", "8809053273124 680 1 680", "합 계 7,660"])
+    rows = ocr.ledger_items(ocr.parse(text))
+    assert [(r["price"]) for r in rows] == [9980, -3000, 680]
+    assert rows[1]["name"] == "(뉴)강성사새우(팩) 할인([델리] 쓱데이 행사)"
+
+
 def test_upload_uses_gemini_with_shrunk_image(monkeypatch):
     monkeypatch.setenv("AUDITON_OCR", "gemini")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")

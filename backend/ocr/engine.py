@@ -125,7 +125,9 @@ def read_image(data: bytes) -> str | None:
 
 # ---------------- Gemini(선택): 사진 → 항목 JSON → 파서가 읽는 영수증 텍스트 ----------------
 GEMINI_SYSTEM = ("너는 한국 영수증·카드전표·계산서를 읽는 OCR이다. 사진에 보이는 값만 글자 그대로 옮기고, "
-                 "보이지 않는 값은 null로 둔다. 추측하거나 계산해서 채우지 않는다. 금액은 원 단위 정수.")
+                 "보이지 않는 값은 null로 둔다. 추측하거나 계산해서 채우지 않는다. 금액은 원 단위 정수. "
+                 "할인·행사·쿠폰 줄이 어느 품목 바로 아래(또는 같은 품목 묶음)에 있으면 그 품목의 discount·discount_name에 넣고, "
+                 "특정 품목에 붙지 않은 할인(영수증 전체 할인)만 discounts에 넣는다. 같은 할인을 두 곳에 넣지 않는다.")
 GEMINI_SCHEMA = {
     "type": "object", "required": ["vendor", "date", "amount", "items"],
     "properties": {
@@ -133,9 +135,12 @@ GEMINI_SCHEMA = {
         "biz_no": {"type": ["string", "null"], "description": "사업자번호 000-00-00000"},
         "date": {"type": ["string", "null"], "description": "거래일 YYYY-MM-DD"},
         "items": {"type": "array", "items": {"type": "object", "required": ["name", "qty", "price"], "properties": {
-            "name": {"type": "string"}, "qty": {"type": "integer"}, "price": {"type": "integer", "description": "단가"}}}},
-        "discounts": {"type": "array", "items": {"type": "object", "properties": {
-            "name": {"type": "string"}, "amount": {"type": "integer", "description": "할인액(양수)"}}}},
+            "name": {"type": "string"}, "qty": {"type": "integer"}, "price": {"type": "integer", "description": "단가(할인 전)"},
+            "discount": {"type": ["integer", "null"], "description": "이 품목에 붙은 할인액(양수), 없으면 null"},
+            "discount_name": {"type": ["string", "null"], "description": "그 할인 줄의 이름, 예: [델리] 쓱데이 행사"}}}},
+        "discounts": {"type": "array", "description": "특정 품목에 붙지 않은 영수증 전체 할인만",
+                      "items": {"type": "object", "properties": {
+                          "name": {"type": "string"}, "amount": {"type": "integer", "description": "할인액(양수)"}}}},
         "supply": {"type": ["integer", "null"], "description": "공급가액(과세물품)"},
         "vat": {"type": ["integer", "null"], "description": "부가세"},
         "amount": {"type": ["integer", "null"], "description": "최종 합계(결제대상금액)"},
@@ -177,12 +182,16 @@ def fields_to_text(j: dict) -> str:
         q, p = _as_int(it.get("qty")), _as_int(it.get("price"))
         if it.get("name") and q and p is not None:
             lines.append(f"{it['name']} {q} x {p:,} = {q * p:,}")
-    for d in j.get("discounts") or []:
-        if (a := _as_int(d.get("amount"))):
-            lines.append(f"{d.get('name') or '할인'} 할인 -{abs(a):,}")
-    for key, label in (("supply", "공급가액"), ("vat", "부가세"), ("amount", "합계")):
+            if (a := _as_int(it.get("discount"))):  # 품목 바로 아래 줄 → parse()가 그 품목의 할인으로 묶는다
+                lines.append(f"{it.get('discount_name') or '할인'} 할인 -{abs(a):,}")
+    for key, label in (("supply", "공급가액"), ("vat", "부가세")):
         if (v := _as_int(j.get(key))) is not None:
             lines.append(f"{label} {v:,}")
+    for d in j.get("discounts") or []:
+        if (a := _as_int(d.get("amount"))):
+            lines.append(f"{d.get('name') or '영수증'} 할인 -{abs(a):,}")
+    if (v := _as_int(j.get("amount"))) is not None:
+        lines.append(f"합계 {v:,}")
     last4 = re.sub(r"\D", "", str(j.get("card_last4") or ""))[-4:]
     if len(last4) == 4:
         inst = _as_int(j.get("installment")) or 0
@@ -280,12 +289,13 @@ def parse(text: str) -> dict:
     def fits(price: int, qty: int, amt: int) -> bool:
         return 0 < qty < 1000 and price > 0 and abs(price * qty - amt) <= max(10, amt * 0.02)
 
-    i = 0
+    i, item_line = 0, -9  # item_line: 마지막 품목을 읽은 줄. 바로 다음 줄의 할인은 그 품목 할인이다
     while i < len(lines):
         l = lines[i]
         fl = flat[i]
         if m := re.match(rf"(.+?)\s+(\d+)\s*[xX×]\s*{NUM}\s*=\s*{NUM}", l):
             f["items"].append({"name": m.group(1).strip(), "qty": int(m.group(2)), "price": _int(m.group(3))})
+            item_line = i
             i += 1
             continue
         # a) 마트 POS: '바코드(8~14자리) 단가 [수량] 금액' 줄 → 바로 윗줄이 상품명(앞 번호는 OCR이 깨도 무시)
@@ -300,16 +310,21 @@ def parse(text: str) -> dict:
                 item = {"name": name, "qty": n[-1] // n[-2], "price": n[-2]}
             if item:
                 f["items"].append(item)
+                item_line = i
                 i += 1
                 continue
         n = _nums(l)
         if n and (n[-1] < 0 or re.search(r"(할인|행사|쿠폰|에누리)", fl)):  # 할인 줄('-'가 지워져도 키워드로)
-            f["discounts"].append({"name": re.split(NUM, l)[0].strip(" []"), "amount": -abs(n[-1])})
+            d = {"name": re.sub(r"\s*할인$", "", re.split(NUM, l)[0].strip(" -:")), "amount": -abs(n[-1])}
+            if i - item_line == 1:
+                d["item"] = len(f["items"]) - 1
+            f["discounts"].append(d)
         elif len(n) >= 3 and not re.match(r"(합계|부가세|과세|결제|받을|면세|카드)", fl) and not re.match(r"^\d{8,}", fl) \
                 and fits(n[-3], n[-2], n[-1]):
             name = re.split(NUM, l)[0].strip(" -:")
             if name and not re.fullmatch(r"\d+", name):
                 f["items"].append({"name": name, "qty": n[-2], "price": n[-3]})
+                item_line = i
         if re.search(r"(일시불|할부|카드결제|승인금액)", fl) and (m := re.search(rf"/\s*{NUM}\s*$", l)):
             f["paid"] = _int(m.group(1))  # 카드로 실제 나간 금액
         i += 1
@@ -322,6 +337,18 @@ def parse(text: str) -> dict:
         f["amount"] = f["paid"]
     f["has_items"] = bool(f["items"])
     return f
+
+
+def ledger_items(f: dict) -> list[dict]:
+    """저장할 세목: 품목 뒤에 그 품목의 할인을 음수 줄로 붙이고, 영수증 전체 할인은 맨 끝에. 세목 합 = 합계."""
+    out = []
+    ds = f.get("discounts", [])
+    for k, it in enumerate(f["items"]):
+        out.append(it)
+        out += [{"name": f"{it['name']} 할인" + (f"({d['name']})" if d["name"] else ""), "qty": 1, "price": d["amount"]}
+                for d in ds if d.get("item") == k]
+    out += [{"name": d["name"] or "할인", "qty": 1, "price": d["amount"]} for d in ds if d.get("item") is None]
+    return out
 
 
 def self_check(f: dict) -> list[dict]:
