@@ -132,6 +132,8 @@ def _nums(line: str) -> list[int]:
     return [_int(m) for m in re.findall(NUM, line)]
 
 
+BRANDS = {"emart": "이마트", "e-mart": "이마트", "homeplus": "홈플러스", "lottemart": "롯데마트", "daiso": "다이소",
+          "gs25": "GS25", "cu ": "CU", "7-eleven": "세븐일레븐", "emart24": "이마트24", "coupang": "쿠팡", "olive young": "올리브영"}
 TOTAL_KEYS = ("결제대상금액", "결제금액", "받을금액", "합계", "총액", "총금액", "합 계")
 VENDOR_HINT = re.compile(r"(마트|점|편의점|상회|스토어|문구|식당|카페|약국|어패럴|㈜|\(주\))")
 
@@ -144,12 +146,21 @@ def parse(text: str) -> dict:
 
     # 업체: 위쪽 다섯 줄 중 상호처럼 보이는 줄, 없으면 첫 줄
     head = lines[:5]
-    v = next((l for l in head if VENDOR_HINT.search(l) and not re.search(r"\d{3}-\d{2}-\d{5}", l)), head[0] if head else "")
+    for logo, name in BRANDS.items():
+        if any(logo in h.lower() for h in head):
+            f["vendor"] = name
+            break
+    v = f["vendor"] or next((l for l in head if VENDOR_HINT.search(l) and not re.search(r"\d{3}-\d{2}-\d{5}", l)), head[0] if head else "")
     f["vendor"] = re.sub(r"\(?0\d{1,2}\)?[\s-]?\d{3,4}-\d{4}", "", v).strip(" ()")  # 전화번호 떼기
 
     for l, fl in zip(lines, flat):
-        if m := re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", l):
-            f.setdefault("date", f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}")
+        if m := re.search(r"(20\d{1,2})[-./](\d{1,2})[-./](\d{1,2})", l):
+            y = m.group(1)
+            if len(y) == 3:  # OCR이 한 자리를 빠뜨림(206 → 2026): 올해·작년 중 끝자리가 맞는 해
+                from datetime import date
+                cur = date.today().year
+                y = next((str(c) for c in (cur, cur - 1) if str(c)[0:2] + str(c)[3] == y), str(cur))
+            f.setdefault("date", f"{y}-{int(m.group(2)):02d}-{int(m.group(3)):02d}")
         if m := re.search(r"(\d{3}-\d{2}-\d{5})", l):
             f.setdefault("biz_no", m.group(1))
         if m := re.search(r"할부\s*(\d+)\s*개월", l):
@@ -184,24 +195,38 @@ def parse(text: str) -> dict:
             f["items"].append({"name": m.group(1).strip(), "qty": int(m.group(2)), "price": _int(m.group(3))})
             i += 1
             continue
-        m = re.match(r"^(\d{2})\s+(\D.*)$", l)
-        nn = _nums(lines[i + 1]) if i + 1 < len(lines) else []
-        if m and len(nn) >= 3 and fits(nn[-3], nn[-2], nn[-1]):
-            f["items"].append({"name": m.group(2).strip(), "qty": nn[-2], "price": nn[-3]})
-            i += 2
-            continue
+        # a) 마트 POS: '바코드(8~14자리) 단가 [수량] 금액' 줄 → 바로 윗줄이 상품명(앞 번호는 OCR이 깨도 무시)
+        bm = re.match(r"^\s*\d{8,14}\s+(.*)$", l)
+        if bm and i > 0:
+            n = _nums(bm.group(1))
+            name = re.sub(r"^\S{1,2}\s+", "", lines[i - 1]).strip() if re.match(r"^\S{1,2}\s", lines[i - 1]) else lines[i - 1].strip()
+            item = None
+            if len(n) >= 3 and fits(n[-3], n[-2], n[-1]):
+                item = {"name": name, "qty": n[-2], "price": n[-3]}
+            elif len(n) >= 2 and n[-2] > 0 and n[-1] % n[-2] == 0 and 0 < n[-1] // n[-2] < 1000:  # 수량을 못 읽음
+                item = {"name": name, "qty": n[-1] // n[-2], "price": n[-2]}
+            if item:
+                f["items"].append(item)
+                i += 1
+                continue
         n = _nums(l)
-        if n and n[-1] < 0:  # 할인 줄
-            f["discounts"].append({"name": re.split(NUM, l)[0].strip(" []"), "amount": n[-1]})
-        elif len(n) >= 3 and not re.match(r"(합계|부가세|과세|결제|받을|면세|카드)", fl) and fits(n[-3], n[-2], n[-1]):
+        if n and (n[-1] < 0 or re.search(r"(할인|행사|쿠폰|에누리)", fl)):  # 할인 줄('-'가 지워져도 키워드로)
+            f["discounts"].append({"name": re.split(NUM, l)[0].strip(" []"), "amount": -abs(n[-1])})
+        elif len(n) >= 3 and not re.match(r"(합계|부가세|과세|결제|받을|면세|카드)", fl) and not re.match(r"^\d{8,}", fl) \
+                and fits(n[-3], n[-2], n[-1]):
             name = re.split(NUM, l)[0].strip(" -:")
             if name and not re.fullmatch(r"\d+", name):
                 f["items"].append({"name": name, "qty": n[-2], "price": n[-3]})
+        if re.search(r"(일시불|할부|카드결제|승인금액)", fl) and (m := re.search(rf"/\s*{NUM}\s*$", l)):
+            f["paid"] = _int(m.group(1))  # 카드로 실제 나간 금액
         i += 1
 
     if f.get("_totals"):
         f["amount"] = min(f["_totals"])[1]  # 결제대상금액 > 결제금액 > … > 합계 순
     f.pop("_totals", None)
+    # 합계를 못 읽었으면: 카드 결제 금액 → (품목 합 + 할인)이 그와 같을 때 그 값
+    if f.get("amount") is None and f.get("paid") is not None:
+        f["amount"] = f["paid"]
     f["has_items"] = bool(f["items"])
     return f
 

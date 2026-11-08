@@ -105,3 +105,17 @@ def test_receipt_parser_pos_and_invoice():
     inv = parse("OO어패럴\n사업자번호 369-46-10536\n일시 2026-03-25 12:26\n학과 과잠 제작 115 x 44,000 = 5,060,000\n"
                 "공급가액 4,600,000\n부가세 460,000\n합계 5,060,000")
     assert inv["items"][0]["qty"] == 115 and all(c["ok"] for c in self_check(inv))
+
+
+def test_receipt_parser_survives_ocr_noise():
+    """실제 OCR에서 나온 깨짐(품목 번호 '@'·'0', 할인 '-' 누락, 연도 '206', 수량 누락, 합계 줄 깨짐)을 견딘다."""
+    from ocr.engine import parse, self_check
+    noisy = ("emart %8-요8 앞실리점 (0216438-1234\n[구 대]206-11-01 20,11 POS:7506-7219\n상품 명 단 가 수량 금 액\n"
+             "01  오무기 컴누들 마라탕 44,7g\n8801045512518 1,680 1 1,680\n@ (뉴)강성사새우(팩)\n2149830099803 9,980 1 9,980\n"
+             "[덜리] 속데이 행사 3,000\n0  싱그락치권무-Dg\n8309053273124 680 680\n8,491\n곁 세 대 {## 액 930 849\n"
+             "카드결걸제(IC) 일시불 / 9,340")
+    f = parse(noisy)
+    assert f["vendor"] == "이마트" and f["date"].endswith("-11-01")
+    assert [i["price"] for i in f["items"]] == [1680, 9980, 680]
+    assert f["discounts"][0]["amount"] == -3000 and f["amount"] == 9340
+    assert self_check(f)[0]["ok"]
