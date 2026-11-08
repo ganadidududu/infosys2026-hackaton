@@ -50,8 +50,8 @@ h1,h2,h3,h4{letter-spacing:-.4px;margin:0}
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap}
 .t-r{background:var(--red-soft);color:var(--red)} .t-a{background:var(--amber-soft);color:var(--amber-ink)} .t-v{background:var(--violet-soft);color:var(--violet)}
 .t-g{background:var(--green-soft);color:var(--green)} .t-b{background:var(--brand-soft);color:var(--brand)} .t-n{background:var(--gray-soft);color:var(--ink2)}
-.cite{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;color:var(--brand);background:var(--brand-soft);border-radius:999px;padding:2px 8px;border:0;margin:1px 2px;white-space:nowrap}
-.cite:hover{background:#dbe5ff}
+.cite{display:inline;font:inherit;font-size:11.5px;font-weight:500;color:var(--mute);background:none;border:0;padding:0;margin:0 8px 0 0;white-space:nowrap;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;text-decoration-color:#c3c9d4}
+.cite:hover{color:var(--brand);text-decoration-color:currentColor}
 .muted{color:var(--mute)} .ink2{color:var(--ink2)} .small{font-size:12.5px} .xs{font-size:11.5px}
 .sec-t{font-size:14px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .sec-t small{font-weight:500;color:var(--mute);font-size:12px}
