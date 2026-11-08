@@ -24,6 +24,10 @@ h1,h2,h3,h4{letter-spacing:-.4px;margin:0}
 .nav a .step{font-size:11px;font-weight:800;width:18px;height:18px;border-radius:6px;background:var(--gray-soft);color:var(--mute);display:grid;place-items:center}
 .nav a.active .step{background:var(--brand);color:#fff}
 .sp{flex:1}
+.account{display:flex;align-items:center;gap:16px;flex-shrink:0;font-size:12.5px;color:var(--mute);white-space:nowrap}
+.account button,.account a{all:unset;cursor:pointer;color:var(--ink2);font-weight:600}
+.account button:hover,.account a:hover{color:var(--brand)}
+.account button:focus-visible,.account a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .chip{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--gray-soft);color:var(--ink2);white-space:nowrap;border:0}
 .chip.demo{background:var(--amber-soft);color:var(--amber-ink)}
 .chip.live{background:var(--green-soft);color:var(--green)}

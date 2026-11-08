@@ -36,7 +36,13 @@ function AdminLayout() {
           {NAV.map(([to, label]) => <NavLink key={to} to={to}>{label}</NavLink>)}
         </nav>
         <div className="sp" />
-        {meta?.user && <button className="chip hide-m" title="내 데이터를 처음 상태로 되돌립니다" onClick={resetMine}>{meta.user} · 처음 상태로</button>}
+        {meta?.user && (
+          <div className="account">
+            <span className="hide-m">{meta.user}</span>
+            <button className="hide-m" title="내 데이터를 처음 상태로 되돌립니다" onClick={resetMine}>처음 상태로</button>
+            <a href="/cdn-cgi/access/logout">로그아웃</a>
+          </div>
+        )}
       </header>
       <main className="page"><Outlet /></main>
     </>
