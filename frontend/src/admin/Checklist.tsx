@@ -19,9 +19,6 @@ export default function Checklist() {
   async function toggle(id: string, done: boolean) {
     await api(`/checklist/${encodeURIComponent(id)}/done`, { body: { done } }); reload()
   }
-  async function setLead(id: string, days: number) {
-    await api(`/checklist/${encodeURIComponent(id)}/lead`, { body: { days } }); toast('권장 기한을 바꿨습니다'); reload()
-  }
   const items: any[] = [...data.events.flatMap((e: any) => e.items), ...data.fixed]
   const allMonths = Array.from(new Set([...items.map((i) => i.due.slice(0, 7)), ...data.events.map((e: any) => e.date.slice(0, 7))])).sort()
   const thisMonth = ymd(new Date()).slice(0, 7)
@@ -130,7 +127,7 @@ export default function Checklist() {
                 <div className="xs" style={{ padding: '10px 18px 2px', fontWeight: 700, color: day < today && its.some((i) => !i.done) ? 'var(--red)' : 'var(--ink2)' }}>
                   {+day.slice(5, 7)}월 {+day.slice(8)}일 ({WD[new Date(day).getDay()]})
                 </div>
-                {its.map((it) => <Item key={it.id} it={it} toggle={toggle} setLead={setLead} showEvent />)}
+                {its.map((it) => <Item key={it.id} it={it} toggle={toggle} showEvent />)}
               </div>
             ))}
           </div>
@@ -185,11 +182,9 @@ function AddEvent({ types, flags, date, close, reload }: any) {
   )
 }
 
-function Item({ it, toggle, setLead, showEvent }: any) {
-  const [ed, setEd] = useState(false)
-  const kindTag = it.due_kind === '기준안 기한' ? 't-b' : it.due_kind.startsWith('순서') ? 't-v' : 't-n'
+function Item({ it, toggle, showEvent }: any) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--line2)', alignItems: 'start', opacity: it.done ? 0.6 : 1 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--line2)', alignItems: 'start', opacity: it.done ? 0.6 : 1 }}>
       <input type="checkbox" checked={!!it.done} onChange={(e) => toggle(it.id, e.target.checked)} style={{ width: 18, height: 18, marginTop: 2, accentColor: 'var(--green)' }} />
       <div>
         <div style={{ fontSize: 13.5, fontWeight: 600, textDecoration: it.done ? 'line-through' : 'none' }}>{showEvent && <span className="muted">[{it.event}] </span>}{it.task}</div>
@@ -198,16 +193,6 @@ function Item({ it, toggle, setLead, showEvent }: any) {
           {it.verify?.status !== '검증됨' && <span className="tag t-a">검수 필요</span>}
           {it.late && <span className="tag t-r">이미 늦음</span>}
         </div>
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <div className="num" style={{ fontWeight: 700, fontSize: 13.5 }}>
-          {ed && setLead ? (
-            <input className="input" type="number" defaultValue={it.lead} style={{ width: 70 }} autoFocus
-              onBlur={(e) => { setEd(false); if (+e.target.value !== it.lead) setLead(it.id, +e.target.value) }}
-              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-          ) : <span style={{ cursor: setLead && it.due_kind === '권장 기한' ? 'pointer' : 'default' }} title={setLead ? '행사일 기준 일수 바꾸기' : ''} onClick={() => setLead && it.due_kind === '권장 기한' && setEd(true)}>{it.due}</span>}
-        </div>
-        <span className={`tag ${kindTag}`} style={{ marginTop: 4 }}>{it.due_kind}</span>
       </div>
     </div>
   )
