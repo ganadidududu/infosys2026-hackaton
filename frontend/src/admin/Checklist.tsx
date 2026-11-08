@@ -114,9 +114,10 @@ export default function Checklist() {
             <div style={{ height: 6, borderRadius: 999, background: 'var(--gray-soft)', marginTop: 10, overflow: 'hidden' }}>
               <i style={{ display: 'block', height: '100%', width: `${monthItems.length ? (done / monthItems.length) * 100 : 0}%`, background: 'var(--green)', transition: '.3s' }} />
             </div>
-            {monthEvents.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+            {monthEvents.length > 0 && <div className="row" style={{ gap: 14, flexWrap: 'wrap', marginTop: 12 }}>
               {monthEvents.map((e: any) => (
-                <span key={e.id} className="tag t-b" style={{ gap: 6 }}>{+e.date.slice(8)}일 {e.name}
+                <span key={e.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink2)' }}>
+                  <i style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--brand)', flexShrink: 0 }} /><b className="num">{+e.date.slice(8)}일</b>{e.name}
                   {e.custom && <button onClick={async () => { if (!confirm(`${e.name} 일정을 지울까요?`)) return; await api(`/schedule/events/${e.id}`, { method: 'DELETE' }); reload() }} style={{ all: 'unset', cursor: 'pointer', opacity: 0.6 }} title="일정 삭제">✕</button>}</span>))}
             </div>}
           </div>
