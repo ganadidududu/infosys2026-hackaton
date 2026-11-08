@@ -92,3 +92,16 @@ def test_violation_without_precedent_goes_to_new_type(monkeypatch):
     bad = [f for f in res["findings"] if f["verdict"] == "미충족"]
     assert bad, "코드 검사로 잡히는 위반이 있어야 한다"
     assert all(f["disposition"] and f["disposition"]["type"] == "신규 유형" for f in bad)
+
+
+def test_receipt_parser_pos_and_invoice():
+    """마트 POS 영수증(두 줄 품목·할인·띄어 쓴 합계)과 계산서 형식을 모두 읽고 검산이 맞는다."""
+    from ocr.engine import parse, self_check
+    pos = parse("가상마트 테스트점 (02)000-0000\n123-45-67890\n[구매]2026-11-01 20:11\n01 컵라면 44.7g\n"
+                "8801000000001 1.68O 1 1,680\n02 새우튀김(팩)\n2100000000002 9,980 1 9,980\n[델리] 행사 -3,000\n"
+                "과 세 물 품 7,873\n부 가 세 787\n합 계 8,660\n결 제 대 상 금 액 8,660")
+    assert [i["price"] for i in pos["items"]] == [1680, 9980] and pos["amount"] == 8660
+    assert all(c["ok"] for c in self_check(pos)), self_check(pos)
+    inv = parse("OO어패럴\n사업자번호 369-46-10536\n일시 2026-03-25 12:26\n학과 과잠 제작 115 x 44,000 = 5,060,000\n"
+                "공급가액 4,600,000\n부가세 460,000\n합계 5,060,000")
+    assert inv["items"][0]["qty"] == 115 and all(c["ok"] for c in self_check(inv))
