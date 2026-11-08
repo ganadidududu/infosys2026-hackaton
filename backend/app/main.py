@@ -875,6 +875,11 @@ def report_update(body: dict = Body(...)):
 
 @app.post("/api/report/send")
 def report_send():
+    rep = report()
+    if not rep["totals"]:
+        raise HTTPException(400, "감사 판단을 먼저 실행하세요.")
+    if rep["unconfirmed"]:
+        raise HTTPException(400, f"확정하지 않은 항목 {rep['unconfirmed']}건이 있습니다. 채점 페이지에서 확정한 뒤 송부하세요.")
     with LOCK:
         st = load_state()
         _rec_state(st).setdefault("report", {})["sent"] = _plus(DS["meta"]["audit"]["end"], 2)  # 감사 종료 후 3일 이내(4부 19조)
@@ -884,9 +889,12 @@ def report_send():
 
 @app.post("/api/objections")
 def objection_add(body: dict = Body(...)):
+    text = body.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(400, "이의 내용을 입력하세요")
     with LOCK:
         st = load_state()
-        _rec_state(st).setdefault("objections", []).append({"finding": body.get("finding"), "text": body["text"], "answer": None,
+        _rec_state(st).setdefault("objections", []).append({"finding": body.get("finding"), "text": text.strip(), "answer": None,
                                                             "at": date.today().isoformat()})
         save_state(st)
     return {"ok": True}
@@ -894,9 +902,15 @@ def objection_add(body: dict = Body(...)):
 
 @app.post("/api/objections/{i}/answer")
 def objection_answer(i: int, body: dict = Body(...)):
+    answer = body.get("answer")
+    if not isinstance(answer, str) or not answer.strip():
+        raise HTTPException(400, "답변을 입력하세요")
     with LOCK:
         st = load_state()
-        _rec_state(st)["objections"][i]["answer"] = body["answer"]
+        objs = _rec_state(st).get("objections", [])
+        if not 0 <= i < len(objs):
+            raise HTTPException(404, "없는 이의입니다")
+        objs[i]["answer"] = answer.strip()
         save_state(st)
     return {"ok": True}
 
@@ -908,6 +922,8 @@ def publish():
     r = audit_result()
     if not r:
         raise HTTPException(400, "감사 판단을 먼저 실행하세요.")
+    if not rep["sent"]:
+        raise HTTPException(400, "감사보고서를 먼저 송부하세요(4부 19조).")
     pend = [f for f in r["findings"] if f["verdict"] == "확인 필요" or (f.get("disposition") or {}).get("type") == "신규 유형"]
     if pend:
         raise HTTPException(400, f"확정되지 않은 항목 {len(pend)}건(확인 필요·신규 유형)이 있습니다.")
@@ -1003,7 +1019,7 @@ if DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        f = DIST / path
-        if path and f.is_file():
+        f = (DIST / path).resolve()
+        if path and f.is_file() and f.is_relative_to(DIST.resolve()):
             return FileResponse(f)
         return FileResponse(DIST / "index.html")
