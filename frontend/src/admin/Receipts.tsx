@@ -143,7 +143,7 @@ function Upload({ projects, engine, close, reload }: any) {
           <label className="card" style={{ padding: 28, textAlign: 'center', borderStyle: 'dashed', cursor: 'pointer' }}>
             <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <div style={{ fontSize: 30 }}>📷</div><b className="small">{file ? file.name : '사진 찍기 · 이미지 선택'}</b>
-            <div className="xs muted" style={{ marginTop: 6 }}>로컬 OCR: {engine ?? '설치되지 않음(아래에 인식 텍스트를 붙여 넣어 시연)'}</div>
+            <div className="xs muted" style={{ marginTop: 6 }}>{engine === 'gemini' ? 'Gemini 인식(사진이 외부로 전송됩니다)' : `로컬 OCR: ${engine ?? '설치되지 않음(아래에 인식 텍스트를 붙여 넣어 시연)'}`}</div>
           </label>
           {(!file || !engine) && (
             <label className="field">{file ? '영수증 내용 입력(OCR 엔진이 없어 사진은 증빙서류 칸에만 붙습니다)' : 'OCR 텍스트 붙여 넣기(엔진이 없을 때)'}
@@ -152,7 +152,7 @@ function Upload({ projects, engine, close, reload }: any) {
             </label>
           )}
           <label className="field">사업 태그<select className="input" value={project} onChange={(e) => setProject(e.target.value)}>{projects.map((p: string) => <option key={p}>{p}</option>)}</select></label>
-          <div className="xs muted">원본 이미지는 서버 밖으로 보내지 않습니다. 카드번호는 끝 4자리만 남깁니다.</div>
+          <div className="xs muted" style={engine === 'gemini' ? { color: 'var(--amber-ink)' } : {}}>{engine === 'gemini' ? '사진을 줄여 Gemini(OpenRouter)로 보내 읽습니다. 개인정보가 찍힌 사진은 올리지 마세요.' : '원본 이미지는 서버 밖으로 보내지 않습니다.'} 카드번호는 끝 4자리만 남깁니다.</div>
           <button className="btn b" disabled={busy || (!text.trim() && (!file || !engine))} onClick={go}>{busy ? '인식 중…' : '인식하고 저장'}</button>
         </div>
       </aside>

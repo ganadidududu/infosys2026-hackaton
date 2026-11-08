@@ -23,6 +23,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.concurrency import run_in_threadpool  # noqa: E402
 
 from audit import engine as audit_engine, memory  # noqa: E402
 from audit.llm import mode as llm_mode  # noqa: E402
@@ -149,7 +150,7 @@ def health():
     from checklist.llm import checklist_model
     body = {"ok": ok, "version": os.environ.get("AUDITON_VERSION", "dev"), "dataset": DATASET,
             "llm": llm_mode(), "llm_provider": provider(),
-            "checklist_model": checklist_model() if llm_mode() == "live" else None, "audit_model": AUDIT_MODEL if llm_mode() == "live" else None, "ocr": ocr.engine_name(), "storage_writable": writable,
+            "checklist_model": checklist_model() if llm_mode() == "live" else None, "audit_model": AUDIT_MODEL if llm_mode() == "live" else None, "ocr": ocr.active_engine(), "storage_writable": writable,
             "uptime_s": round(time.time() - STARTED)}
     if not ok:
         raise HTTPException(503, detail=body)
@@ -161,7 +162,7 @@ def health():
 def meta():
     st = load_state()
     return {**DS["meta"], "accounts": DS["accounts"], "dataset": DATASET, "llm_mode": llm_mode(),
-            "ocr_engine": ocr.engine_name(), "published": bool(st.get("published")), "today": st.get("today")}
+            "ocr_engine": ocr.active_engine(), "published": bool(st.get("published")), "today": st.get("today")}
 
 
 @app.get("/api/kijun")
@@ -431,7 +432,7 @@ def receipts():
         parsed = ocr.parse(r.get("ocr_text", ""))
         out.append({**r, "image": bool(receipt_image_path(r["id"])), "parsed": parsed, "self_check": ocr.self_check({**parsed, "amount": r["amount"], "has_items": r["has_items"]}),
                     "match": state_of.get(r["id"], {"status": "통장에 없는 영수증" if r["id"] in rec["not_in_bank"] else "미매칭"})})
-    return {"receipts": out, "projects": [p["name"] for p in ds["projects"]], "engine": ocr.engine_name()}
+    return {"receipts": out, "projects": [p["name"] for p in ds["projects"]], "engine": ocr.active_engine()}
 
 
 @app.patch("/api/receipts/{rid}")
@@ -479,9 +480,9 @@ async def receipt_upload(file: UploadFile = File(...), project: str = "", text: 
     if not ocr_text and file.content_type and file.content_type.startswith("text"):
         ocr_text = data.decode("utf-8", "ignore")
     if not ocr_text:
-        ocr_text = ocr.read_image(data)
+        ocr_text = await run_in_threadpool(ocr.read_image, data)  # OCR 동안 다른 요청을 막지 않도록
     if not ocr_text:
-        return {"ok": False, "manual": True, "message": "로컬 OCR 엔진(EasyOCR/PaddleOCR)이 설치되지 않아 직접 입력이 필요합니다."}
+        return {"ok": False, "manual": True, "message": "영수증을 읽지 못했습니다(OCR 엔진 없음 또는 Gemini 호출 실패). 직접 입력해 주세요."}
     f = ocr.parse(ocr_text)
     with LOCK:
         st = load_state()

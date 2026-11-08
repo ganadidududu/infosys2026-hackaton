@@ -11,9 +11,13 @@
 from __future__ import annotations
 
 import io
+import logging
+import os
 import re
 
+log = logging.getLogger("auditon")
 ENGINE = None
+OCR_MODEL = os.environ.get("OCR_MODEL", "google/gemini-2.5-flash")
 
 
 def engine_name() -> str | None:
@@ -30,6 +34,14 @@ def engine_name() -> str | None:
         except Exception:  # noqa: BLE001
             ENGINE = ""
     return ENGINE or None
+
+
+def active_engine() -> str | None:
+    """AUDITON_OCR=gemini이고 OpenRouter 키가 있으면 Gemini(사진 외부 전송), 아니면 로컬 엔진."""
+    from core.llm_client import provider
+    if os.environ.get("AUDITON_OCR") == "gemini" and provider() == "openrouter":
+        return "gemini"
+    return engine_name()
 
 
 _READER = None
@@ -91,6 +103,11 @@ def group_rows(boxes: list[tuple[list, str, float]]) -> list[str]:
 
 
 def read_image(data: bytes) -> str | None:
+    if active_engine() == "gemini":
+        try:
+            return read_image_gemini(data)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Gemini OCR 실패, 로컬 엔진으로 넘김: %s", type(e).__name__)
     name = engine_name()
     if not name:
         return None
@@ -104,6 +121,82 @@ def read_image(data: bytes) -> str | None:
     ocr = PaddleOCR(lang="korean")
     res = ocr.ocr(np.stack([img] * 3, axis=-1))
     return "\n".join(group_rows([(line[0], line[1][0], line[1][1]) for page in res for line in page]))
+
+
+# ---------------- Gemini(선택): 사진 → 항목 JSON → 파서가 읽는 영수증 텍스트 ----------------
+GEMINI_SYSTEM = ("너는 한국 영수증·카드전표·계산서를 읽는 OCR이다. 사진에 보이는 값만 글자 그대로 옮기고, "
+                 "보이지 않는 값은 null로 둔다. 추측하거나 계산해서 채우지 않는다. 금액은 원 단위 정수.")
+GEMINI_SCHEMA = {
+    "type": "object", "required": ["vendor", "date", "amount", "items"],
+    "properties": {
+        "vendor": {"type": ["string", "null"], "description": "상호(가맹점명)"},
+        "biz_no": {"type": ["string", "null"], "description": "사업자번호 000-00-00000"},
+        "date": {"type": ["string", "null"], "description": "거래일 YYYY-MM-DD"},
+        "items": {"type": "array", "items": {"type": "object", "required": ["name", "qty", "price"], "properties": {
+            "name": {"type": "string"}, "qty": {"type": "integer"}, "price": {"type": "integer", "description": "단가"}}}},
+        "discounts": {"type": "array", "items": {"type": "object", "properties": {
+            "name": {"type": "string"}, "amount": {"type": "integer", "description": "할인액(양수)"}}}},
+        "supply": {"type": ["integer", "null"], "description": "공급가액(과세물품)"},
+        "vat": {"type": ["integer", "null"], "description": "부가세"},
+        "amount": {"type": ["integer", "null"], "description": "최종 합계(결제대상금액)"},
+        "card_last4": {"type": ["string", "null"], "description": "카드번호 끝 4자리"},
+        "installment": {"type": ["integer", "null"], "description": "할부 개월 수, 일시불이면 0"},
+        "points": {"type": ["integer", "null"], "description": "적립 포인트"},
+    },
+}
+
+
+def _shrink(data: bytes) -> tuple[bytes, str]:
+    """긴 변 1600px JPEG로 줄여 전송량·지연을 줄인다(Pillow가 없으면 원본 그대로)."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return data, "image/png" if data[:4] == b"\x89PNG" else "image/jpeg"
+    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    im.thumbnail((1600, 1600))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85)
+    return buf.getvalue(), "image/jpeg"
+
+
+def _as_int(v) -> int | None:
+    try:
+        return int(str(v).replace(",", "")) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def fields_to_text(j: dict) -> str:
+    """Gemini 항목 → parse()가 그대로 읽는 영수증 텍스트. 저장·표시·검산은 로컬 OCR과 같은 길을 탄다."""
+    lines = [(j.get("vendor") or "").strip() or "상호 미상"]
+    if j.get("biz_no"):
+        lines.append(f"사업자번호 {j['biz_no']}")
+    if j.get("date"):
+        lines.append(f"일시 {j['date']}")
+    for it in j.get("items") or []:
+        q, p = _as_int(it.get("qty")), _as_int(it.get("price"))
+        if it.get("name") and q and p is not None:
+            lines.append(f"{it['name']} {q} x {p:,} = {q * p:,}")
+    for d in j.get("discounts") or []:
+        if (a := _as_int(d.get("amount"))):
+            lines.append(f"{d.get('name') or '할인'} 할인 -{abs(a):,}")
+    for key, label in (("supply", "공급가액"), ("vat", "부가세"), ("amount", "합계")):
+        if (v := _as_int(j.get(key))) is not None:
+            lines.append(f"{label} {v:,}")
+    last4 = re.sub(r"\D", "", str(j.get("card_last4") or ""))[-4:]
+    if len(last4) == 4:
+        inst = _as_int(j.get("installment")) or 0
+        lines.append(f"카드 ****-{last4} " + (f"할부 {inst}개월" if inst > 1 else "일시불"))
+    if (pt := _as_int(j.get("points"))):
+        lines.append(f"포인트 적립 {pt:,}")
+    return "\n".join(lines)
+
+
+def read_image_gemini(data: bytes) -> str:
+    from core.llm_client import chat_json
+    j = chat_json(OCR_MODEL, GEMINI_SYSTEM, "이 영수증 사진의 항목을 JSON으로 옮겨라.", GEMINI_SCHEMA,
+                  name="receipt", max_tokens=2048, timeout=60, image=_shrink(data))
+    return fields_to_text(j)
 
 
 # ---------------- 3) 숫자 교정 + 파서 ----------------

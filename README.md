@@ -46,6 +46,7 @@ cd frontend && npm install && npm run dev      # http://localhost:5173
 | `AUDIT_MODEL` | `google/gemini-2.5-flash` (OpenRouter) | 감사 모델을 직접 지정할 수 있다. Anthropic 직접 연결의 기본 모델은 `anthropic/claude-sonnet-5`다. |
 | `AUDITON_DATASET` | `tune` | `eval`은 최종 측정 때만 `AUDITON_ALLOW_EVAL=1`과 함께 |
 | OCR | 미설치 시 직접 입력 | `pip install easyocr`(또는 `paddleocr`)하면 사진에서 자동 인식. 원본 이미지는 외부로 보내지 않음 |
+| `AUDITON_OCR` | (없음) = 로컬 OCR | `gemini`로 두고 `OPENROUTER_API_KEY`가 있으면 영수증 사진을 긴 변 1600px로 줄여 Gemini가 읽는다(빠르고 정확하지만 **사진이 외부로 나감**). 실패하면 로컬 OCR로 넘긴다. 모델은 `OCR_MODEL`(기본 `google/gemini-2.5-flash`) |
 
 체크리스트는 코드 규칙으로 계산한다.
 

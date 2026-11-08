@@ -1,10 +1,11 @@
 """외부 LLM 호출 한 곳. 기본은 OpenRouter(키 하나로 Claude·GPT 등 여러 제공사), 없으면 Anthropic 직접.
 
-- 보내는 것은 가명처리된 텍스트뿐이다(원본 이미지·실명·계좌는 보내지 않는다).
+- 보내는 것은 가명처리된 텍스트뿐이다(실명·계좌는 보내지 않는다). 예외: AUDITON_OCR=gemini를 켜면 영수증 사진을 보낸다.
 - temperature 0, JSON 스키마 출력. 키·본문은 로그에 남기지 않는다.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -34,12 +35,19 @@ def _parse(text: str) -> dict:
 
 
 def chat_json(model: str, system: str, user: str, schema: dict | None = None, name: str = "result",
-              max_tokens: int = 4096, timeout: float = 120) -> dict:
+              max_tokens: int = 4096, timeout: float = 120, image: tuple[bytes, str] | None = None) -> dict:
     p = provider()
+    if image and p != "openrouter":
+        raise RuntimeError("이미지 입력은 OpenRouter에서만 지원합니다 (OPENROUTER_API_KEY)")
     if p == "openrouter":
+        content: str | list = user
+        if image:
+            data, mime = image
+            content = [{"type": "text", "text": user},
+                       {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}}]
         body: dict = {
             "model": model, "temperature": 0, "max_tokens": max_tokens,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             # 모델이 고장 난 JSON을 내면 OpenRouter가 고쳐 준다
             "plugins": [{"id": "response-healing"}],
         }
