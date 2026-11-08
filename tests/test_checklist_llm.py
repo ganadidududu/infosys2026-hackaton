@@ -1,4 +1,4 @@
-"""체크리스트 LLM: 감사 LLM과 다른 제공사, 코드 검증(조항·인용), 실패 시 라이브러리, 같은 유형은 한 번만 호출."""
+"""체크리스트 LLM: 감사 LLM과 다른 모델, 코드 검증(조항·인용), 실패 시 라이브러리, 기본 일정은 호출 없음, 조합마다 한 번만."""
 import sys
 from pathlib import Path
 
@@ -14,10 +14,19 @@ def _setup(monkeypatch, tmp_path):
     return cl
 
 
-def test_different_provider_from_audit(monkeypatch, tmp_path):
+def test_gemini_model_different_from_audit(monkeypatch, tmp_path):
     cl = _setup(monkeypatch, tmp_path)
     from audit import llm as al
-    assert cl.checklist_model().split("/")[0] != al.AUDIT_MODEL.split("/")[0]
+    assert cl.checklist_model().startswith("google/gemini") and cl.checklist_model() != al.AUDIT_MODEL
+
+
+def test_builtin_events_never_call_llm(monkeypatch, tmp_path):
+    cl = _setup(monkeypatch, tmp_path)
+    from checklist import engine
+    calls = []
+    monkeypatch.setattr(cl, "chat_json", lambda *a, **k: calls.append(1) or {"obligations": []})
+    obls = engine.extract({"id": "E1", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []})
+    assert any(o["key"] == "fest_copy" for o in obls) and cl.pending() == 0 and calls == []
 
 
 def test_live_output_is_verified_and_cached(monkeypatch, tmp_path):
@@ -33,7 +42,7 @@ def test_live_output_is_verified_and_cached(monkeypatch, tmp_path):
         ]}
 
     monkeypatch.setattr(cl, "chat_json", fake)
-    ev = {"id": "E9", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []}
+    ev = {"id": "E9", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": [], "custom": True}
     first = engine.extract(ev)  # 화면 요청은 LLM을 기다리지 않는다: 처음엔 검수된 라이브러리
     assert any(o["key"] == "fest_copy" for o in first)
     import time
@@ -60,7 +69,11 @@ def test_failure_falls_back_to_library(monkeypatch, tmp_path):
         raise RuntimeError("down")
 
     monkeypatch.setattr(cl, "chat_json", boom)
-    ev = {"id": "E1", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []}
+    ev = {"id": "E1", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": [], "custom": True}
     assert cl.extract_live(ev) is None  # 실패하면 None
     obls = engine.extract(ev)
     assert any(o["key"] == "fest_copy" for o in obls)
+    calls = []
+    monkeypatch.setattr(cl, "chat_json", lambda *a, **k: calls.append(1) or {"obligations": []})
+    engine.extract(ev)
+    assert cl.extract_live(ev) is None and calls == [] and cl.pending() == 0  # 실패한 조합도 다시 부르지 않음

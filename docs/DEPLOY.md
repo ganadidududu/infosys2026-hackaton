@@ -21,7 +21,7 @@
 | 배포 후 헬스 체크 실패 시 이전 버전으로 자동 되돌림 | `deploy/update.sh` |
 | 푸시마다 테스트·빌드·이미지 헬스 체크 | `.github/workflows/ci.yml` |
 | 서버가 스스로 배포(2분마다 main 확인, 실패 시 되돌림) | `deploy/auto-update.sh` |
-| 체크리스트 LLM 실패 시 검수된 의무 목록으로 대체, 결과는 유형별로 저장 | `backend/checklist/llm.py` |
+| 체크리스트 LLM(Gemini): 기본 일정은 검수된 의무 목록, 직접 추가한 일정만 조합마다 한 번 호출·저장(실패도 저장해 재호출 없음) | `backend/checklist/llm.py` |
 | S3 백업(SSE) 10분 + 하루 스냅숏 | `deploy/backup.sh`, systemd timer |
 | CORS를 화면 주소로만 제한 | `AUDITON_CORS` |
 

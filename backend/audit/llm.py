@@ -164,13 +164,16 @@ def call(packet: dict, call_no: int) -> dict:
     """JSON 형식이 깨지면 1회 재시도, 그래도 실패하면 모든 조항을 '확인 필요'로 돌려준다."""
     if mode() == "replay":
         return {**_mock(packet, call_no), "mode": "replay"}
+    why = "LLM 응답 형식 오류"
     for _ in range(2):
         try:
             res = _live(packet)
             if isinstance(res.get("judgments"), list):
                 return {**res, "mode": "live"}
-        except Exception:  # noqa: BLE001
-            continue
+        except Exception as e:  # noqa: BLE001  호출 실패 원인을 화면에 그대로 보여 준다
+            code = getattr(getattr(e, "response", None), "status_code", None)
+            why = ("LLM 호출 실패: 크레딧 부족(402)" if code == 402 else f"LLM 호출 실패(HTTP {code})" if code
+                   else f"LLM 호출 실패({type(e).__name__})")
     return {"judgments": [{"clause": c["id"], "target": packet["title"], "verdict": "확인 필요", "evidence": [], "missing": [],
-                           "same_case": None, "is_new_type": False, "question": "LLM 응답 형식 오류"} for c in packet["clauses"]],
+                           "same_case": None, "is_new_type": False, "question": why} for c in packet["clauses"]],
             "mode": "live-error"}

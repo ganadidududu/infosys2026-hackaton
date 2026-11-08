@@ -1,9 +1,10 @@
 """체크리스트 LLM: 학기 행사 하나를 받아 기준안에서 '행사 전·중·후 해야 할 일'을 뽑는다.
 
-- 감사 LLM과 분리: 다른 모델(가능하면 다른 제공사)·다른 프롬프트, 과거 감사 기억(Case)에 접근하지 않는다.
+- 감사 LLM과 분리: 다른 모델·다른 프롬프트(기본 Gemini 2.5 Flash-Lite), 과거 감사 기억(Case)에 접근하지 않는다.
 - LLM은 할 일·근거 조항·원문 인용·선후 관계·권장 리드타임만 낸다. 기한 계산·정렬은 코드(engine.py)가 한다.
 - 출력은 코드가 검증한다: 조항이 실제로 있는지, 인용이 그 조항 원문에 글자 그대로 있는지(없으면 '검수 필요').
-- 같은 행사 유형·특이사항 조합은 한 번만 부르고 저장한다(비용·결과 일관성). 실패하면 감사인이 검수한 라이브러리로 돌아간다.
+- 기본 일정은 감사인이 검수한 라이브러리를 그대로 쓰고 LLM을 부르지 않는다. 직접 추가한 일정만, 행사 유형·특이사항 조합마다
+  평생 한 번 부르고 결과(실패도)를 저장한다. 실패하면 라이브러리로 돌아가고 다시 부르지 않는다.
 """
 from __future__ import annotations
 
@@ -22,19 +23,14 @@ BACKEND = Path(__file__).resolve().parents[1]
 CACHE = Path(os.environ.get("AUDITON_VAR", str(BACKEND / "var"))) / "checklist-llm.json"
 
 
-def _vendor(model: str) -> str:
-    return model.split("/", 1)[0] if "/" in model else "anthropic"
-
-
 def checklist_model() -> str:
-    """감사 LLM과 다른 제공사를 고른다."""
-    from audit.llm import AUDIT_MODEL
+    """감사 LLM과 다른 모델(기본: Gemini 2.5 Flash-Lite, 감사는 Gemini 2.5 Flash)."""
     m = os.environ.get("CHECKLIST_MODEL")
     if m:
         return m
     if provider() == "anthropic":
         return "claude-haiku-5-5"  # Anthropic 직접 연결만 있을 때(같은 제공사, 다른 모델·프롬프트)
-    return "openai/gpt-5" if _vendor(AUDIT_MODEL) != "openai" else "anthropic/claude-sonnet-5"
+    return "google/gemini-2.5-flash-lite"
 
 
 def mode() -> str:
@@ -109,15 +105,15 @@ _PLOCK = threading.Lock()
 
 
 def _key(event: dict) -> str:
-    return f"{event['type']}|{','.join(sorted(event.get('flags', [])))}|{checklist_model()}"
+    return f"{event['type']}|{','.join(sorted(event.get('flags', [])))}"  # 모델을 바꿔도 만들어 둔 결과를 계속 쓴다
 
 
 def cached(event: dict) -> list[dict] | None:
-    """화면 요청용: 저장된 결과만 즉시 돌려주고, 없으면 백그라운드로 받아 둔다(요청은 기다리지 않음)."""
+    """화면 요청용: 저장된 결과만 즉시 돌려준다. 직접 추가한 일정이고 아직 한 번도 안 불렀을 때만 백그라운드로 한 번 부른다."""
     k = _key(event)
-    hit = _load().get(k)
-    if hit is not None:
-        return hit
+    cache = _load()
+    if k in cache or not event.get("custom"):
+        return cache.get(k)  # 실패로 저장된 조합(None)·기본 일정은 라이브러리
     with _PLOCK:
         if k in _PENDING:
             return None
@@ -150,12 +146,10 @@ def extract_live(event: dict) -> list[dict] | None:
     try:
         res = chat_json(checklist_model(), SYSTEM, user, SCHEMA, name="checklist", max_tokens=3000, timeout=90)
         obls = _clean(res.get("obligations", []), f"LLM · {event['type']}")
-    except Exception:  # noqa: BLE001  네트워크·형식 오류 → 라이브러리 사용
-        return None
-    if not obls:
-        return None
+    except Exception:  # noqa: BLE001  네트워크·형식·크레딧 오류 → 라이브러리 사용
+        obls = []
     with _PLOCK:  # 여러 스레드가 동시에 저장해도 서로 덮어쓰지 않게 다시 읽고 합친다
         cache = _load()
-        cache[key] = obls
+        cache[key] = obls or None  # 실패도 저장해서 같은 조합을 다시 부르지 않는다
         _save(cache)
-    return obls
+    return obls or None

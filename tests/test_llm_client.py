@@ -119,3 +119,20 @@ def test_receipt_parser_survives_ocr_noise():
     assert [i["price"] for i in f["items"]] == [1680, 9980, 680]
     assert f["discounts"][0]["amount"] == -3000 and f["amount"] == 9340
     assert self_check(f)[0]["ok"]
+
+
+def test_audit_call_reports_real_failure_reason(monkeypatch):
+    from audit import llm as al
+    monkeypatch.setenv("AUDITON_LLM", "live")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    class Resp:
+        status_code = 402
+
+    def broke(packet):
+        raise httpx.HTTPStatusError("x", request=None, response=Resp())
+
+    monkeypatch.setattr(al, "_live", broke)
+    out = al.call({"title": "MT", "clauses": [{"id": "3부 13조"}]}, 1)
+    assert out["mode"] == "live-error"
+    assert out["judgments"][0]["question"] == "LLM 호출 실패: 크레딧 부족(402)"

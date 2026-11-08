@@ -146,25 +146,6 @@ def ledger_now():
     return ds, build(ds, load_state())
 
 
-@app.on_event("startup")
-def _warm_checklist():
-    """live 모드면 체크리스트 LLM 결과를 서버 시작 때 미리 받아 둔다(첫 화면이 느리지 않게). 실패해도 서버는 뜬다."""
-    from checklist import llm as cl
-    if cl.mode() != "live":
-        return
-
-    def run():
-        try:
-            ds = load_ds()
-            for ev in ds.get("schedule", []):
-                cl.extract_live(ev)
-            log.info(json.dumps({"warm": "checklist", "ok": True}))
-        except Exception as e:  # noqa: BLE001
-            log.info(json.dumps({"warm": "checklist", "ok": False, "err": type(e).__name__}))
-
-    threading.Thread(target=run, daemon=True).start()
-
-
 # ---------------- 헬스 체크 ----------------
 @app.get("/api/health")
 def health():
@@ -224,7 +205,7 @@ def cases():
 # ---------------- 체크리스트 (기능 3) ----------------
 def schedule_ds(st: dict) -> dict:
     ds = dict(DS)
-    ds["schedule"] = DS["schedule"] + st.get("custom_events", [])
+    ds["schedule"] = DS["schedule"] + [{**e, "custom": True} for e in st.get("custom_events", [])]
     return ds
 
 
