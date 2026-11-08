@@ -23,7 +23,7 @@ sys.path.insert(0, str(BACKEND))
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, Response  # noqa: E402
+from fastapi.responses import FileResponse, RedirectResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.concurrency import run_in_threadpool  # noqa: E402
 
@@ -173,6 +173,12 @@ def health():
 
 
 # ---------------- 메타·기준안 ----------------
+@app.get("/api/login")
+def login(next: str = "/"):
+    """Cloudflare Access 로그인을 마치면 여기로 돌아온다 → 원래 보던 화면으로. 같은 사이트 경로만 허용."""
+    return RedirectResponse(next if next.startswith("/") and not next.startswith(("//", "/\\")) else "/", status_code=302)
+
+
 @app.get("/api/meta")
 def meta(request: Request):
     st = load_state()

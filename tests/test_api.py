@@ -62,6 +62,12 @@ def test_saved_run_reused_without_llm_calls(monkeypatch):
     assert len(calls) == ran
 
 
+def test_login_returns_to_same_site_path_only():
+    go = lambda n: client.get("/api/login", params={"next": n}, follow_redirects=False).headers["location"]
+    assert go("/grade?x=1") == "/grade?x=1"
+    assert go("https://evil.example") == "/" and go("//evil.example") == "/" and go("/\\evil.example") == "/"
+
+
 def test_receipt_delete():
     client.post("/api/reset")
     ids = lambda: [r["id"] for r in client.get("/api/receipts").json()["receipts"]]
