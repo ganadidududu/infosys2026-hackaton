@@ -76,6 +76,23 @@ def test_receipt_delete():
     assert client.get("/api/statement").status_code == 200
 
 
+def test_each_login_email_has_its_own_space():
+    a = {"cf-access-authenticated-user-email": "a@example.com"}
+    b = {"cf-access-authenticated-user-email": "B@Example.com "}
+    up = lambda h: client.post("/api/receipts/upload", headers=h,
+                               files={"file": ("r.txt", "OO카페\n일시 2026-06-20\n합계 3,000", "text/plain")}).json()["receipt"]["id"]
+    ids = lambda h: {r["id"] for r in client.get("/api/receipts", headers=h).json()["receipts"]}
+    client.post("/api/reset", headers=a), client.post("/api/reset", headers=b), client.post("/api/reset")
+    ra = up(a)
+    assert ra in ids(a) and ra not in ids(b) and ra not in ids({})
+    rid = client.post("/api/records", headers=b, json={"title": "B 기록"}).json()["id"]
+    assert rid in {r["id"] for r in client.get("/api/records", headers=b).json()}
+    assert rid not in {r["id"] for r in client.get("/api/records", headers=a).json()}
+    assert client.get("/api/meta", headers=a).json()["user"] == "a@example.com"
+    client.post("/api/reset", headers=a)
+    assert ra not in ids(a) and rid in {r["id"] for r in client.get("/api/records", headers=b).json()}
+
+
 def test_publish_requires_confirm_and_send():
     client.post("/api/reset")
     rid = client.post("/api/records", json={"title": "t"}).json()["id"]

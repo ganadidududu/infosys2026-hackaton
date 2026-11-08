@@ -11,6 +11,8 @@ import os
 import re
 import sys
 import threading
+import hashlib
+from contextvars import ContextVar
 import time
 import logging
 from datetime import date, datetime, timedelta
@@ -19,7 +21,7 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile  # noqa: E402
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
@@ -39,8 +41,26 @@ if DATASET == "eval" and os.environ.get("AUDITON_ALLOW_EVAL") != "1":
     raise SystemExit("평가용 세트는 개발 중 열지 않습니다. 최종 측정 때만 AUDITON_ALLOW_EVAL=1로 실행하세요.")
 DS_PATH = ROOT / "data" / "synthetic" / DATASET / "dataset.json"
 VAR = Path(os.environ.get("AUDITON_VAR", str(BACKEND / "var")))  # 배포 시 EBS 볼륨(/data)
-STATE_PATH = VAR / f"state-{DATASET}.json"
 LOCK = threading.Lock()
+# 로그인 사용자별 공간: Cloudflare Access가 붙여 주는 이메일로 VAR/users/<해시>/ 아래에 상태·업로드를 따로 둔다.
+_USER_DIR: ContextVar[Path] = ContextVar("user_dir", default=VAR)
+
+
+def user_dir() -> Path:
+    return _USER_DIR.get()
+
+
+def state_path() -> Path:
+    return user_dir() / f"state-{DATASET}.json"
+
+
+def files_dir() -> Path:
+    return user_dir() / "files"
+
+
+def receipt_img() -> Path:
+    return files_dir() / "receipts"
+
 
 app = FastAPI(title="Auditon API", version="0.1.0")
 # 운영에서는 AUDITON_CORS=https://auditon.pages.dev,https://도메인 처럼 화면 주소만 허용
@@ -49,6 +69,19 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS, allow_methods=["*"], allo
 STARTED = time.time()
 log = logging.getLogger("auditon")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+@app.middleware("http")
+async def per_user(request, call_next):
+    """로그인 이메일(Cloudflare Access 헤더)마다 따로운 공간. 헤더가 없으면(로컬 개발) 공용 공간.
+    원본 서버는 터널로만 들어오므로 이 헤더는 Cloudflare가 붙인 값이다."""
+    email = (request.headers.get("cf-access-authenticated-user-email") or "").strip().lower()
+    tok = _USER_DIR.set(VAR / "users" / hashlib.sha256(email.encode()).hexdigest()[:16]) if email else None
+    try:
+        return await call_next(request)
+    finally:
+        if tok:
+            _USER_DIR.reset(tok)
 
 
 @app.middleware("http")
@@ -75,17 +108,17 @@ DS = load_ds()
 
 
 def load_state() -> dict:
-    if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    if state_path().exists():
+        return json.loads(state_path().read_text(encoding="utf-8"))
     return {}
 
 
 def save_state(st: dict) -> None:
     """원자 저장: 임시 파일에 쓴 뒤 rename. 쓰는 도중 서버가 죽어도 기존 상태가 깨지지 않는다."""
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_PATH.with_suffix(".tmp")
+    state_path().parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, STATE_PATH)
+    os.replace(tmp, state_path())
 
 
 def dataset() -> dict:
@@ -160,9 +193,10 @@ def health():
 
 # ---------------- 메타·기준안 ----------------
 @app.get("/api/meta")
-def meta():
+def meta(request: Request):
     st = load_state()
     return {**DS["meta"], "accounts": DS["accounts"], "dataset": DATASET, "llm_mode": llm_mode(),
+            "user": request.headers.get("cf-access-authenticated-user-email"),
             "ocr_engine": ocr.active_engine(), "published": bool(st.get("published")), "today": st.get("today")}
 
 
@@ -305,7 +339,7 @@ def statement_view():
     st = load_state()
     lc = st.get("ledger_csv")
     ds, led = ledger_now()
-    imgs = {f.stem for d in (RECEIPT_IMG, SAMPLE_IMG) if d.exists() for f in d.glob("*")}
+    imgs = {f.stem for d in (receipt_img(), SAMPLE_IMG) if d.exists() for f in d.glob("*")}
     rcs = {r["id"]: {"items": r["items"], "ocr_text": r.get("ocr_text", ""), "kind": r["kind"], "vendor": r["vendor"], "image": r["id"] in imgs,
                      **st.get("receipt_edits", {}).get(r["id"], {})} for r in ds["receipts"]}
     if not lc:   # 아직 장부를 올리지 않음 → 원본 칸은 비워 둔다
@@ -455,7 +489,6 @@ def receipt_edit(rid: str, body: dict = Body(...)):
     return {"ok": True}
 
 
-RECEIPT_IMG = VAR / "files" / "receipts"
 
 
 @app.delete("/api/receipts/{rid}")
@@ -466,7 +499,7 @@ def receipt_delete(rid: str):
         mine = [r for r in st.get("new_receipts", []) if r["id"] == rid]
         if mine:
             st["new_receipts"] = [r for r in st["new_receipts"] if r["id"] != rid]
-            for f in RECEIPT_IMG.glob(f"{rid}.*") if RECEIPT_IMG.exists() else []:
+            for f in receipt_img().glob(f"{rid}.*") if receipt_img().exists() else []:
                 f.unlink()
         elif any(r["id"] == rid for r in DS["receipts"]):
             if rid not in st.setdefault("deleted_receipts", []):
@@ -483,7 +516,7 @@ SAMPLE_IMG = ROOT / "data" / "synthetic" / DATASET / "receipts"
 
 def receipt_image_path(rid: str) -> Path | None:
     """업로드한 사진이 우선, 없으면 가상 영수증 이미지."""
-    for d in (RECEIPT_IMG, SAMPLE_IMG):
+    for d in (receipt_img(), SAMPLE_IMG):
         if d.exists():
             f = next(iter(sorted(d.glob(f"{rid}.*"))), None)
             if f:
@@ -522,9 +555,9 @@ async def receipt_upload(file: UploadFile = File(...), project: str = "", text: 
         st.setdefault("new_receipts", []).append(r)
         save_state(st)
     if file.content_type and file.content_type.startswith("image"):
-        RECEIPT_IMG.mkdir(parents=True, exist_ok=True)
+        receipt_img().mkdir(parents=True, exist_ok=True)
         ext = Path(file.filename or "x.jpg").suffix.lower() or ".jpg"
-        (RECEIPT_IMG / f"{r['id']}{ext}").write_bytes(data)
+        (receipt_img() / f"{r['id']}{ext}").write_bytes(data)
     return {"ok": True, "receipt": r, "self_check": ocr.self_check(f)}
 
 
@@ -605,7 +638,6 @@ SLOTS = [
     {"key": "cover", "label": "표지·원본대조필", "hint": "자치기구명·회계기간·감사명칭", "required": True, "clause": "3부 63조"},
     {"key": "inquiry", "label": "질의·답변 기록", "hint": "선택", "required": False, "clause": "4부 15조"},
 ]
-FILES = VAR / "files"
 
 
 def _past_records() -> list[dict]:
@@ -659,20 +691,20 @@ def audit_result(rid: str | None = None, force: bool = False) -> dict | None:
     key = json.dumps([rid, st.get("pair_decisions"), st.get("income_overrides"), st.get("receipt_edits"), st.get("transfer_notes"),
                       [r["id"] for r in st.get("new_receipts", [])], st.get("deleted_receipts"), st.get("ledger_csv", {}).get("mapping"), ledger_file.get("name"), ledger_file.get("uploaded")],
                      sort_keys=True, default=str)
-    path = FILES / rid / "audit_run.json"
+    path = files_dir() / rid / "audit_run.json"
     if force:
         cl = checklist_engine.schedule(schedule_ds(st), st, st.get("today"))
         status = {e["name"]: [{"task": i["task"], "done": bool(i["done"]), "clauses": i["clauses"]} for i in e["items"]] for e in cl["events"]}
-        c = RUN_CACHE[rid] = {"key": key, "res": audit_engine.run(ds, led, status)}
+        c = RUN_CACHE[(user_dir(), rid)] = {"key": key, "res": audit_engine.run(ds, led, status)}
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(c, ensure_ascii=False, default=str), encoding="utf-8")
         os.replace(tmp, path)
-    c = RUN_CACHE.get(rid)
+    c = RUN_CACHE.get((user_dir(), rid))
     if not c:
         if not path.exists():
             return None
-        c = RUN_CACHE[rid] = json.loads(path.read_text(encoding="utf-8"))
+        c = RUN_CACHE[(user_dir(), rid)] = json.loads(path.read_text(encoding="utf-8"))
     findings = audit_engine.apply_decisions(c["res"]["findings"], rec.get("decisions", {}))
     return {"res": c["res"], "findings": findings, "totals": audit_engine.totals(findings), "ds": ds, "led": led, "rec": rec, "rid": rid,
             "stale": c["key"] != key}
@@ -741,7 +773,7 @@ def record_delete(rid: str):
     with LOCK:
         st = load_state()
         st.get("records", {}).pop(rid, None)
-        RUN_CACHE.pop(rid, None)
+        RUN_CACHE.pop((user_dir(), rid), None)
         if st.get("active_record") == rid:
             st["active_record"] = None
         save_state(st)
@@ -762,7 +794,7 @@ async def record_upload(rid: str, slot: str, file: UploadFile = File(...)):
             raise HTTPException(400, "장부 CSV 열을 알아보지 못했습니다: " + ", ".join(errs))
         tx, sk = csv_import.to_transactions(h, b, m)
         info |= {"transactions": tx, "rows": len(tx), "skipped": len(sk), "mapping": {k: v["header"] for k, v in m.items()}}
-    d = FILES / rid
+    d = files_dir() / rid
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{slot}__{Path(file.filename or 'file').name}").write_bytes(data)
     with LOCK:
@@ -1044,11 +1076,12 @@ def public_dept(dept: str):
 @app.post("/api/reset")
 def reset():
     with LOCK:
-        if STATE_PATH.exists():
-            STATE_PATH.unlink()
+        if state_path().exists():
+            state_path().unlink()
         import shutil
-        shutil.rmtree(FILES, ignore_errors=True)
-    RUN_CACHE.clear()
+        shutil.rmtree(files_dir(), ignore_errors=True)
+    for k in [k for k in RUN_CACHE if k[0] == user_dir()]:
+        RUN_CACHE.pop(k)
     return {"ok": True}
 
 

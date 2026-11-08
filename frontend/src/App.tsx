@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { ClauseProvider, ToastProvider } from './ui/ui'
+import { api, useApi } from './api'
 import Statement from './admin/Statement'
 import Checklist from './admin/Checklist'
 import Grade from './admin/Grade'
@@ -17,6 +18,12 @@ const NAV = [
 ] as const
 
 function AdminLayout() {
+  const { data: meta } = useApi('/meta')
+  async function resetMine() {
+    if (!confirm('내 공간의 영수증·장부·채점 기록을 모두 지우고 가상 데이터 처음 상태로 되돌릴까요? 다른 사람 데이터에는 영향이 없습니다.')) return
+    await api('/reset', { method: 'POST' })
+    location.reload()
+  }
   return (
     <>
       <header className="top">
@@ -25,6 +32,7 @@ function AdminLayout() {
           {NAV.map(([to, label]) => <NavLink key={to} to={to}>{label}</NavLink>)}
         </nav>
         <div className="sp" />
+        {meta?.user && <button className="chip hide-m" title="내 데이터를 처음 상태로 되돌립니다" onClick={resetMine}>{meta.user} · 처음 상태로</button>}
         <Link to="/" className="chip" style={{ background: 'var(--ink)', color: '#fff' }}>학생 공개 페이지 ↗</Link>
       </header>
       <main className="page"><Outlet /></main>
