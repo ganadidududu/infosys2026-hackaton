@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from core.kijun import exists
 from audit import llm, memory
@@ -43,8 +44,11 @@ def run(ds: dict, led: dict, checklist_status: dict | None = None) -> dict:
     cases_by = {c["id"]: c for c in ds["cases"]}
     findings = []
     raw = {}
-    for p in packets:
-        r1, r2 = llm.call(p, 1), llm.call(p, 2)
+    jobs = [(p, n) for p in packets for n in (1, 2)]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        replies = list(ex.map(lambda a: llm.call(*a), jobs))
+    for i, p in enumerate(packets):
+        r1, r2 = replies[2 * i], replies[2 * i + 1]
         raw[p["id"]] = {"call1": r1, "call2": r2}
         by2 = {j["clause"]: j for j in r2["judgments"]}
         for j1 in r1["judgments"]:

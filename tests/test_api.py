@@ -11,7 +11,9 @@ os.environ["AUDITON_VAR"] = tempfile.mkdtemp(prefix="auditon-test-")
 os.environ.pop("AUDITON_LLM", None)
 
 from fastapi.testclient import TestClient  # noqa: E402
+from app import main  # noqa: E402
 from app.main import app  # noqa: E402
+from audit import llm  # noqa: E402
 
 client = TestClient(app)
 
@@ -34,6 +36,30 @@ def test_objection_input_validation():
     assert client.post("/api/objections", json={"text": "이의"}).status_code == 200
     assert client.post("/api/objections/0/answer", json={}).status_code == 400
     assert client.post("/api/objections/0/answer", json={"answer": "답"}).status_code == 200
+
+
+def test_saved_run_reused_without_llm_calls(monkeypatch):
+    client.post("/api/reset")
+    rid = client.post("/api/records", json={"title": "t"}).json()["id"]
+    client.post(f"/api/records/{rid}/fill-sample")
+    calls = []
+    real = llm.call
+    monkeypatch.setattr(llm, "call", lambda p, n: calls.append(n) or real(p, n))
+    assert client.post(f"/api/records/{rid}/run").status_code == 200
+    ran = len(calls)
+    assert ran > 0
+    first = client.get(f"/api/records/{rid}/audit").json()
+
+    main.RUN_CACHE.clear()
+    item = next(r for r in client.get("/api/records").json() if r["id"] == rid)
+    again = client.get(f"/api/records/{rid}/audit").json()
+    assert len(calls) == ran
+    assert item["score"] == first["score"]["score"] and item["stale"] is False
+    assert again["findings"] == first["findings"] and again["stale"] is False
+
+    assert client.post("/api/transfer-note", json={"key": "qa", "note": "통장 간 이체"}).status_code == 200
+    assert client.get(f"/api/records/{rid}/audit").json()["stale"] is True
+    assert len(calls) == ran
 
 
 def test_publish_requires_confirm_and_send():

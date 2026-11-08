@@ -628,16 +628,27 @@ def audit_result(rid: str | None = None, force: bool = False) -> dict | None:
         return None
     ds = record_dataset(rec)
     led = build(ds, st)
+    ledger_file = rec.get("files", {}).get("ledger") or {}
     key = json.dumps([rid, st.get("pair_decisions"), st.get("income_overrides"), st.get("receipt_edits"), st.get("transfer_notes"),
-                      len(st.get("new_receipts", [])), st.get("ledger_csv", {}).get("mapping"), (rec.get("files", {}).get("ledger") or {}).get("name")],
+                      len(st.get("new_receipts", [])), st.get("ledger_csv", {}).get("mapping"), ledger_file.get("name"), ledger_file.get("uploaded")],
                      sort_keys=True, default=str)
-    c = RUN_CACHE.get(rid)
-    if force or not c or c["key"] != key:
+    path = FILES / rid / "audit_run.json"
+    if force:
         cl = checklist_engine.schedule(schedule_ds(st), st, st.get("today"))
         status = {e["name"]: [{"task": i["task"], "done": bool(i["done"]), "clauses": i["clauses"]} for i in e["items"]] for e in cl["events"]}
-        c = RUN_CACHE[rid] = {"key": key, "res": audit_engine.run(ds, led, status), "led": led, "ds": ds}
+        c = RUN_CACHE[rid] = {"key": key, "res": audit_engine.run(ds, led, status)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(c, ensure_ascii=False, default=str), encoding="utf-8")
+        os.replace(tmp, path)
+    c = RUN_CACHE.get(rid)
+    if not c:
+        if not path.exists():
+            return None
+        c = RUN_CACHE[rid] = json.loads(path.read_text(encoding="utf-8"))
     findings = audit_engine.apply_decisions(c["res"]["findings"], rec.get("decisions", {}))
-    return {"res": c["res"], "findings": findings, "totals": audit_engine.totals(findings), "ds": c["ds"], "led": c["led"], "rec": rec, "rid": rid}
+    return {"res": c["res"], "findings": findings, "totals": audit_engine.totals(findings), "ds": ds, "led": led, "rec": rec, "rid": rid,
+            "stale": c["key"] != key}
 
 
 def _score(t: dict) -> dict:
@@ -665,6 +676,7 @@ def records_list():
             if res:
                 item["score"], item["total"], item["warnings"] = _score(res["totals"])["score"], res["totals"]["total"], res["totals"]["warnings"]
                 item["pending"] = res["totals"]["pending_new"] + res["totals"]["pending_check"]
+                item["stale"] = res["stale"]
         out.append(item)
     out.sort(key=lambda x: x["created"], reverse=True)
     return out
@@ -702,6 +714,7 @@ def record_delete(rid: str):
     with LOCK:
         st = load_state()
         st.get("records", {}).pop(rid, None)
+        RUN_CACHE.pop(rid, None)
         if st.get("active_record") == rid:
             st["active_record"] = None
         save_state(st)
@@ -794,7 +807,7 @@ def record_audit(rid: str):
     cases_by = {c["id"]: c for c in r["ds"]["cases"]}
     packets = [{k: p[k] for k in ("id", "title", "projects", "clauses", "inquiries", "documents", "checks", "obligations", "memory", "ledger_rows")}
                for p in r["res"]["packets"]]
-    return {"ran": True, "ran_at": rec.get("ran"), "mode": r["res"]["mode"], "findings": r["findings"], "totals": r["totals"],
+    return {"ran": True, "ran_at": rec.get("ran"), "stale": r["stale"], "mode": r["res"]["mode"], "findings": r["findings"], "totals": r["totals"],
             "score": _score(r["totals"]), "packets": packets, "cases": cases_by, "checks": r["led"]["checks"]}
 
 

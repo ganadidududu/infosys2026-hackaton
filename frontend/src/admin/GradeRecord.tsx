@@ -53,6 +53,12 @@ export default function GradeRecord() {
         </div>
       )}
 
+      {audit.data.ran && audit.data.stale && running < 0 && (
+        <div className="card pad small" style={{ marginBottom: 16, color: 'var(--amber-ink)' }}>
+          채점 뒤에 장부·영수증·대사 자료가 바뀌었습니다. 아래 결과는 지난 채점 기준이고, ‘다시 채점’을 눌러야 반영됩니다.
+        </div>
+      )}
+
       {!audit.data.ran ? (
         <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) 320px', alignItems: 'start' }}>
           <div className="card">
