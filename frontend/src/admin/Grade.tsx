@@ -13,9 +13,7 @@ export default function Grade() {
   if (!data) return <Loading />
   return (
     <>
-      <div className="ph">
-        <div><div className="crumb">모의 채점</div><h1>감사 기록</h1>
-          <p>감사자료를 올리면 기준안과 과거 선례로 모의 채점합니다. 점수는 100점에서 총 감점(사례 감점 + 경고 감점)을 뺀 값입니다.</p></div>
+      <div className="ph" style={{ justifyContent: 'flex-end' }}>
         <button className="btn b" onClick={() => setOpen(true)}>＋ 새 감사 기록 만들기</button>
       </div>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))' }}>

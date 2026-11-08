@@ -1,5 +1,4 @@
 import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
-import { useApi } from './api'
 import { ClauseProvider, ToastProvider } from './ui/ui'
 import Statement from './admin/Statement'
 import Checklist from './admin/Checklist'
@@ -18,7 +17,6 @@ const NAV = [
 ] as const
 
 function AdminLayout() {
-  const { data: meta } = useApi('/meta')
   return (
     <>
       <header className="top">
@@ -27,9 +25,6 @@ function AdminLayout() {
           {NAV.map(([to, label]) => <NavLink key={to} to={to}>{label}</NavLink>)}
         </nav>
         <div className="sp" />
-        {meta && <span className={`chip ${meta.llm_mode === 'live' ? 'live' : 'demo'} hide-m`}>{meta.llm_mode === 'live' ? 'LLM 라이브' : 'LLM 재생 모드'} · 가상 데이터</span>}
-        {meta && <span className="chip hide-m">{meta.dept} · {meta.period.label}</span>}
-        <Link to="/admin/kijun" className="chip hide-m">기준안·선례</Link>
         <Link to="/" className="chip" style={{ background: 'var(--ink)', color: '#fff' }}>학생 공개 페이지 ↗</Link>
       </header>
       <main className="page"><Outlet /></main>
