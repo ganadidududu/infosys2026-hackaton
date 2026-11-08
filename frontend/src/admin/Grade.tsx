@@ -31,7 +31,7 @@ function RecordBox({ r, reload }: any) {
   const toast = useToast()
   const done = r.score != null
   return (
-    <Link to={`/admin/grade/${r.id}`} className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 190, position: 'relative' }}>
+    <Link to={`/grade/${r.id}`} className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 190, position: 'relative' }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <span className={`tag ${r.readonly ? 't-n' : done ? 't-g' : 't-a'}`}>{r.status}</span>
         <span className="xs muted">{r.created?.replace('T', ' ')}</span>
@@ -67,7 +67,7 @@ function NewRecord({ meta, close }: any) {
   const [busy, setBusy] = useState(false)
   async function make() {
     setBusy(true)
-    try { const r = await api('/records', { body: f }); nav(`/admin/grade/${r.id}`) } catch (e: any) { toast(e.message, true); setBusy(false) }
+    try { const r = await api('/records', { body: f }); nav(`/grade/${r.id}`) } catch (e: any) { toast(e.message, true); setBusy(false) }
   }
   return (
     <>

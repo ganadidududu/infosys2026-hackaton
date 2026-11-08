@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { ClauseProvider, ToastProvider } from './ui/ui'
 import { api, useApi } from './api'
 import Statement from './admin/Statement'
@@ -7,15 +7,19 @@ import Grade from './admin/Grade'
 import GradeRecord from './admin/GradeRecord'
 import Report from './admin/Report'
 import Kijun from './admin/Kijun'
-import PublicList from './public/PublicList'
-import PublicDept from './public/PublicDept'
 
 // 상단 탭은 3개로 고정
 const NAV = [
-  ['/admin/statement', '(수입·지출) 내역서'],
-  ['/admin/schedule', '학기 스케줄러'],
-  ['/admin/grade', '모의 채점'],
+  ['/statement', '(수입·지출) 내역서'],
+  ['/schedule', '학기 스케줄러'],
+  ['/grade', '모의 채점'],
 ] as const
+
+// 예전 주소(/admin/...)로 들어오면 같은 화면의 새 주소로
+function OldAdminUrl() {
+  const { pathname, search } = useLocation()
+  return <Navigate to={(pathname.replace(/^\/admin/, '') || '/') + search} replace />
+}
 
 function AdminLayout() {
   const { data: meta } = useApi('/meta')
@@ -27,13 +31,12 @@ function AdminLayout() {
   return (
     <>
       <header className="top">
-        <Link to="/admin" className="logo"><i>A</i>Auditon</Link>
+        <Link to="/" className="logo"><i>A</i>Auditon</Link>
         <nav className="nav">
           {NAV.map(([to, label]) => <NavLink key={to} to={to}>{label}</NavLink>)}
         </nav>
         <div className="sp" />
         {meta?.user && <button className="chip hide-m" title="내 데이터를 처음 상태로 되돌립니다" onClick={resetMine}>{meta.user} · 처음 상태로</button>}
-        <Link to="/" className="chip" style={{ background: 'var(--ink)', color: '#fff' }}>학생 공개 페이지 ↗</Link>
       </header>
       <main className="page"><Outlet /></main>
     </>
@@ -46,17 +49,16 @@ export default function App() {
       <ToastProvider>
         <ClauseProvider>
           <Routes>
-            <Route path="/" element={<PublicList />} />
-            <Route path="/d/:dept" element={<PublicDept />} />
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<Navigate to="/admin/statement" replace />} />
+            <Route path="/admin/*" element={<OldAdminUrl />} />
+            <Route path="/" element={<AdminLayout />}>
+              <Route index element={<Navigate to="/statement" replace />} />
               <Route path="statement" element={<Statement />} />
               <Route path="schedule" element={<Checklist />} />
               <Route path="grade" element={<Grade />} />
               <Route path="grade/:rid" element={<GradeRecord />} />
               <Route path="report" element={<Report />} />
               <Route path="kijun" element={<Kijun />} />
-              <Route path="*" element={<Navigate to="/admin/statement" replace />} />
+              <Route path="*" element={<Navigate to="/statement" replace />} />
             </Route>
           </Routes>
         </ClauseProvider>

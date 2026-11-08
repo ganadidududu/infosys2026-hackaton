@@ -16,7 +16,6 @@ else
 fi
 [ -f data/synthetic/tune/dataset.json ] || backend/.venv/bin/python data/synthetic/generate.py --set tune
 echo ""
-echo "  ▶ http://localhost:8000          학생 공개 페이지"
-echo "  ▶ http://localhost:8000/admin    관리자(집행부·감사위원회)"
+echo "  ▶ http://localhost:8000"
 echo ""
 cd backend && exec .venv/bin/uvicorn app.main:app --port 8000

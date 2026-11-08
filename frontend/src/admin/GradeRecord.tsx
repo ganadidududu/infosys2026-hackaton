@@ -36,7 +36,7 @@ export default function GradeRecord() {
     <>
       <div className="ph">
         <div>
-          <div className="crumb"><Link to="/admin/grade" style={{ textDecoration: 'underline' }}>모의 채점</Link> › {r.kind} · {r.dept} · {r.period.replace('-', '년 제')}차</div>
+          <div className="crumb"><Link to="/grade" style={{ textDecoration: 'underline' }}>모의 채점</Link> › {r.kind} · {r.dept} · {r.period.replace('-', '년 제')}차</div>
           <h1>{r.title}</h1>
           {r.memo && <p>{r.memo}</p>}
         </div>
@@ -202,7 +202,7 @@ function Scored({ rid, r, data, titles, reload, onRun, running }: any) {
           </div>
           <div className="bb">
             <button className="btn sm" disabled={running >= 0} onClick={onRun}>{running >= 0 ? <><span className="spin" /> 채점 중</> : '다시 채점'}</button>
-            <Link className="btn sm k" to="/admin/report">보고서</Link>
+            <Link className="btn sm k" to="/report">보고서</Link>
           </div>
         </div>
         <div className="card" style={{ paddingTop: 4 }}>
@@ -316,7 +316,7 @@ function PastRecord({ r }: any) {
   const s = r.summary
   return (
     <>
-      <div className="ph"><div><div className="crumb"><Link to="/admin/grade" style={{ textDecoration: 'underline' }}>모의 채점</Link> › 지난 기록</div><h1>{r.title}</h1>
+      <div className="ph"><div><div className="crumb"><Link to="/grade" style={{ textDecoration: 'underline' }}>모의 채점</Link> › 지난 기록</div><h1>{r.title}</h1>
         <p>{r.dept} · {r.period.replace('-', '년 제')}차 회계기간 · 확정된 감사 결과 요약(읽기 전용)</p></div></div>
       <div className="grid" style={{ gridTemplateColumns: '300px 1fr', alignItems: 'start' }}>
         <div className="card pad row" style={{ gap: 18 }}>

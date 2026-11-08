@@ -1037,42 +1037,6 @@ def _public_text(f: dict) -> str:
     return PUBLIC_TEXT.get(f["clause"], "{project} 관련 지적 사항").format(project=f["project"])
 
 
-# ---------------- 학생 공개 페이지 ----------------
-@app.get("/api/public")
-def public_list():
-    st = load_state()
-    vers = st.get("published_versions", [])
-    items = []
-    me = vers[-1] if vers else None
-    items.append({"dept": DS["meta"]["dept"], "period": DS["meta"]["period"]["id"], "published": bool(me),
-                  "total": me["totals"]["total"] if me else None, "warnings": me["totals"]["warnings"] if me else None,
-                  "prev": DS["history"][-1]["total"], "history": DS["history"] + ([{"period": DS["meta"]["period"]["id"], "total": me["totals"]["total"], "warnings": me["totals"]["warnings"]}] if me else [])})
-    for o in DS["other_depts"]:
-        cur = o["history"][-1]
-        items.append({"dept": o["dept"], "period": cur["period"], "published": True, "total": cur["total"], "warnings": cur["warnings"],
-                      "prev": o["history"][-2]["total"], "history": o["history"], "sample": True})
-    items.sort(key=lambda x: x["dept"])
-    return {"period": DS["meta"]["period"], "items": items}
-
-
-@app.get("/api/public/{dept}")
-def public_dept(dept: str):
-    st = load_state()
-    if dept == DS["meta"]["dept"]:
-        vers = st.get("published_versions", [])
-        if not vers:
-            raise HTTPException(404, "아직 공시되지 않았습니다.")
-        return {**vers[-1], "versions": len(vers)}
-    o = next((x for x in DS["other_depts"] if x["dept"] == dept), None)
-    if not o:
-        raise HTTPException(404)
-    cur = o["history"][-1]
-    return {"dept": dept, "period": DS["meta"]["period"], "sample": True, "totals": {"total": cur["total"], "warnings": cur["warnings"],
-            "warning_points": max(0, cur["warnings"] - 2), "case_points": cur["total"] - max(0, cur["warnings"] - 2)},
-            "history": o["history"][:-1], "findings": [], "opinions": [], "objections": [], "publisher": f"{dept} 학생회 집행부",
-            "published_at": "2026-08-14", "keep_until": "2031-08-14"}
-
-
 @app.post("/api/reset")
 def reset():
     with LOCK:
