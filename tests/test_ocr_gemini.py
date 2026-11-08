@@ -53,6 +53,7 @@ def test_fields_round_trip_through_parser():
 
 def test_item_discount_becomes_line_under_its_item():
     j = {"vendor": "이마트 왕십리점", "date": "2026-11-01", "amount": 9340, "supply": 8491, "vat": 849,
+         "card_last4": "6746", "installment": 0, "points": 9,
          "items": [{"name": "마라탕 44.7g", "qty": 1, "price": 1680},
                    {"name": "(뉴)강성사새우(팩)", "qty": 1, "price": 9980, "discount": 3000, "discount_name": "[델리] 쓱데이 행사"},
                    {"name": "싱그림치킨무200g", "qty": 1, "price": 680}]}

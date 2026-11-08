@@ -314,7 +314,7 @@ def parse(text: str) -> dict:
                 i += 1
                 continue
         n = _nums(l)
-        if n and (n[-1] < 0 or re.search(r"(할인|행사|쿠폰|에누리)", fl)):  # 할인 줄('-'가 지워져도 키워드로)
+        if n and not re.search(r"\*{2,}-?\d{4}", l) and (n[-1] < 0 or re.search(r"(할인|행사|쿠폰|에누리)", fl)):  # 카드 '****-1234'는 할인 아님  # 할인 줄('-'가 지워져도 키워드로)
             d = {"name": re.sub(r"\s*할인$", "", re.split(NUM, l)[0].strip(" -:")), "amount": -abs(n[-1])}
             if i - item_line == 1:
                 d["item"] = len(f["items"]) - 1
