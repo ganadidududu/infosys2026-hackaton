@@ -34,6 +34,13 @@ def test_live_output_is_verified_and_cached(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cl, "chat_json", fake)
     ev = {"id": "E9", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []}
+    first = engine.extract(ev)  # 화면 요청은 LLM을 기다리지 않는다: 처음엔 검수된 라이브러리
+    assert any(o["key"] == "fest_copy" for o in first)
+    import time
+    for _ in range(50):
+        if cl.pending() == 0 and calls:
+            break
+        time.sleep(0.05)
     obls = engine.extract(ev)
     mine = {o["key"]: o for o in obls if o["group"].startswith("LLM")}
     assert set(mine) == {"open_account", "copy"}
@@ -53,5 +60,7 @@ def test_failure_falls_back_to_library(monkeypatch, tmp_path):
         raise RuntimeError("down")
 
     monkeypatch.setattr(cl, "chat_json", boom)
-    obls = engine.extract({"id": "E1", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []})
+    ev = {"id": "E1", "name": "축제", "type": "축제 부스", "date": "2026-05-20", "flags": []}
+    assert cl.extract_live(ev) is None  # 실패하면 None
+    obls = engine.extract(ev)
     assert any(o["key"] == "fest_copy" for o in obls)

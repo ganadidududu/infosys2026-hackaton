@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -103,9 +104,44 @@ def _save(c: dict) -> None:
     os.replace(tmp, CACHE)
 
 
+_PENDING: set[str] = set()
+_PLOCK = threading.Lock()
+
+
+def _key(event: dict) -> str:
+    return f"{event['type']}|{','.join(sorted(event.get('flags', [])))}|{checklist_model()}"
+
+
+def cached(event: dict) -> list[dict] | None:
+    """화면 요청용: 저장된 결과만 즉시 돌려주고, 없으면 백그라운드로 받아 둔다(요청은 기다리지 않음)."""
+    k = _key(event)
+    hit = _load().get(k)
+    if hit is not None:
+        return hit
+    with _PLOCK:
+        if k in _PENDING:
+            return None
+        _PENDING.add(k)
+
+    def run():
+        try:
+            extract_live(event)
+        finally:
+            with _PLOCK:
+                _PENDING.discard(k)
+
+    threading.Thread(target=run, daemon=True).start()
+    return None
+
+
+def pending() -> int:
+    with _PLOCK:
+        return len(_PENDING)
+
+
 def extract_live(event: dict) -> list[dict] | None:
     """행사 유형·특이사항 조합마다 한 번 호출. 실패하면 None(호출한 쪽이 라이브러리로 대체)."""
-    key = f"{event['type']}|{','.join(sorted(event.get('flags', [])))}|{checklist_model()}"
+    key = _key(event)
     cache = _load()
     if key in cache:
         return cache[key]
@@ -118,6 +154,8 @@ def extract_live(event: dict) -> list[dict] | None:
         return None
     if not obls:
         return None
-    cache[key] = obls
-    _save(cache)
+    with _PLOCK:  # 여러 스레드가 동시에 저장해도 서로 덮어쓰지 않게 다시 읽고 합친다
+        cache = _load()
+        cache[key] = obls
+        _save(cache)
     return obls

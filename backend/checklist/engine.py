@@ -58,7 +58,7 @@ def extract(event: dict) -> list[dict]:
     '모든 사업' 공통 의무는 항상 라이브러리에서 붙인다(사업번호·사업개요서·증빙)."""
     from checklist import llm as cl
     if cl.mode() == "live":
-        obls = cl.extract_live(event)
+        obls = cl.cached(event)  # 요청을 막지 않음: 아직 없으면 이번엔 라이브러리, 다음부터 LLM 결과
         if obls:
             base = [{**o, "group": "모든 사업"} for o in OBLIGATION_LIBRARY["모든 사업"]]
             have = {o["key"] for o in base}
