@@ -4,7 +4,7 @@
 - replay(기본): 시연용 재생 모드. 실제 API 없이 규칙 기반 모의 응답을 만든다. 일부러 '인용 불일치'와
   '2회 판정 불일치'를 한 번씩 섞어 검증 단계가 동작하는 모습을 보여 준다(QUIRKS).
 - live: AUDITON_LLM=live 이고 OPENROUTER_API_KEY(또는 ANTHROPIC_API_KEY)가 있으면 실제 모델을 호출한다.
-  모델은 AUDIT_MODEL(기본 anthropic/claude-sonnet-5). 체크리스트 LLM과 다른 제공사를 쓴다.
+  AUDIT_MODEL을 지정하지 않으면 OpenRouter는 Gemini 2.5 Flash, Anthropic 직접 연결은 Claude Sonnet 5를 쓴다.
 감점은 어떤 모드에서도 출력하지 않는다.
 """
 from __future__ import annotations
@@ -129,7 +129,9 @@ def _packet_prompt(packet: dict) -> str:
     return json.dumps(slim, ensure_ascii=False)
 
 
-AUDIT_MODEL = os.environ.get("AUDIT_MODEL", "anthropic/claude-sonnet-5")
+AUDIT_MODEL = os.environ.get("AUDIT_MODEL") or (
+    "anthropic/claude-sonnet-5" if provider() == "anthropic" else "google/gemini-2.5-flash"
+)
 
 SCHEMA = {
     "type": "object", "required": ["judgments"],

@@ -42,10 +42,12 @@ cd frontend && npm install && npm run dev      # http://localhost:5173
 
 | 환경변수 | 기본값 | 설명 |
 | --- | --- | --- |
-| `AUDITON_LLM` | (없음) = 재생 모드 | `live`로 두고 `ANTHROPIC_API_KEY`가 있으면 감사 LLM을 실제로 호출. 재생 모드는 규칙 기반 모의 응답이며, 검증 단계 시연용으로 ‘인용 불일치’ 1건과 ‘2회 판정 불일치’ 1건을 일부러 섞는다(`backend/audit/llm.py`의 `QUIRKS`) |
-| `AUDIT_MODEL` | `claude-sonnet-5-5` | 라이브 모드 감사 LLM 모델 |
+| `AUDITON_LLM` | `replay` | `live`와 `OPENROUTER_API_KEY`를 설정하면 감사 LLM을 호출한다. OpenRouter 키가 없으면 `ANTHROPIC_API_KEY`로 직접 연결할 수 있다. 재생 모드는 규칙 기반 모의 응답에 시연용 인용·판정 불일치를 포함한다. |
+| `AUDIT_MODEL` | `google/gemini-2.5-flash` (OpenRouter) | 감사 모델을 직접 지정할 수 있다. Anthropic 직접 연결의 기본 모델은 `anthropic/claude-sonnet-5`다. |
 | `AUDITON_DATASET` | `tune` | `eval`은 최종 측정 때만 `AUDITON_ALLOW_EVAL=1`과 함께 |
 | OCR | 미설치 시 직접 입력 | `pip install easyocr`(또는 `paddleocr`)하면 사진에서 자동 인식. 원본 이미지는 외부로 보내지 않음 |
+
+체크리스트는 코드 규칙으로 계산한다.
 
 ## 구조
 
