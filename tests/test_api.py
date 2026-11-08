@@ -62,6 +62,20 @@ def test_saved_run_reused_without_llm_calls(monkeypatch):
     assert len(calls) == ran
 
 
+def test_receipt_delete():
+    client.post("/api/reset")
+    ids = lambda: [r["id"] for r in client.get("/api/receipts").json()["receipts"]]
+    up = lambda: client.post("/api/receipts/upload", files={"file": ("r.txt", "OO카페\n일시 2026-06-20\n합계 3,000", "text/plain")}).json()["receipt"]["id"]
+    a, b = up(), up()
+    assert client.delete(f"/api/receipts/{a}").status_code == 200
+    assert a not in ids() and b in ids()
+    c = up()
+    assert c not in (a, b)
+    assert client.delete("/api/receipts/R001").status_code == 200 and "R001" not in ids()
+    assert client.delete("/api/receipts/R999").status_code == 404
+    assert client.get("/api/statement").status_code == 200
+
+
 def test_publish_requires_confirm_and_send():
     client.post("/api/reset")
     rid = client.post("/api/records", json={"title": "t"}).json()["id"]

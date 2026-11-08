@@ -66,6 +66,10 @@ function ReceiptDrawer({ r, close, reload }: any) {
     await api(`/receipts/${r.id}`, { method: 'PATCH', body: { ...f, amount: +f.amount, items: items.map((i) => ({ ...i, qty: +i.qty, price: +i.price })) } })
     toast('저장했습니다'); reload(); close()
   }
+  async function remove() {
+    if (!confirm(`${r.id} ${r.vendor} 영수증을 삭제할까요? 되돌릴 수 없습니다.`)) return
+    try { await api(`/receipts/${r.id}`, { method: 'DELETE' }); toast('영수증을 삭제했습니다'); reload(); close() } catch (e: any) { toast(e.message, true) }
+  }
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -110,7 +114,10 @@ function ReceiptDrawer({ r, close, reload }: any) {
               </div>
             </div>
           </div>
-          <button className="btn p" onClick={save}>저장</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
+            <button className="btn p" onClick={save}>저장</button>
+            <button className="btn" style={{ color: 'var(--red)' }} onClick={remove}>영수증 삭제</button>
+          </div>
         </div>
       </aside>
     </>

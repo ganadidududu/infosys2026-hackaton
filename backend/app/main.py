@@ -92,7 +92,8 @@ def dataset() -> dict:
     """업로드한 영수증·내역 등 런타임 추가분을 반영한 데이터셋."""
     st = load_state()
     ds = copy.deepcopy(DS)
-    ds["receipts"] += st.get("new_receipts", [])
+    gone = set(st.get("deleted_receipts", []))
+    ds["receipts"] = [r for r in ds["receipts"] if r["id"] not in gone] + st.get("new_receipts", [])
     for r in st.get("new_receipts", []):
         ds["documents"].append({"id": f"증빙-{r['id']}", "kind": "증빙", "project": r["project"],
                                 "title": f"{r['kind']} · {r['vendor']}", "text": r.get("ocr_text", "")})
@@ -457,6 +458,26 @@ def receipt_edit(rid: str, body: dict = Body(...)):
 RECEIPT_IMG = VAR / "files" / "receipts"
 
 
+@app.delete("/api/receipts/{rid}")
+def receipt_delete(rid: str):
+    """올린 영수증은 기록·사진·수정분을 지우고, 가상 데이터 영수증은 숨긴 목록에 넣는다."""
+    with LOCK:
+        st = load_state()
+        mine = [r for r in st.get("new_receipts", []) if r["id"] == rid]
+        if mine:
+            st["new_receipts"] = [r for r in st["new_receipts"] if r["id"] != rid]
+            for f in RECEIPT_IMG.glob(f"{rid}.*") if RECEIPT_IMG.exists() else []:
+                f.unlink()
+        elif any(r["id"] == rid for r in DS["receipts"]):
+            if rid not in st.setdefault("deleted_receipts", []):
+                st["deleted_receipts"].append(rid)
+        else:
+            raise HTTPException(404, "없는 영수증입니다")
+        st.get("receipt_edits", {}).pop(rid, None)
+        save_state(st)
+    return {"ok": True}
+
+
 SAMPLE_IMG = ROOT / "data" / "synthetic" / DATASET / "receipts"
 
 
@@ -491,7 +512,7 @@ async def receipt_upload(file: UploadFile = File(...), project: str = "", text: 
     f = ocr.parse(ocr_text)
     with LOCK:
         st = load_state()
-        n = len(DS["receipts"]) + len(st.get("new_receipts", [])) + 1
+        n = max(int(x["id"][1:]) for x in DS["receipts"] + st.get("new_receipts", [])) + 1  # 삭제해도 번호가 겹치지 않게
         r = {"id": f"R{n:03d}", "project": project or "미지정", "date": f.get("date", date.today().isoformat()),
              "vendor": f.get("vendor", ""), "amount": f.get("amount", 0), "items": ocr.ledger_items(f), "has_items": f["has_items"],
              "kind": "카드전표" if f.get("card_last4") else "현금영수증", "pay": "카드" if f.get("card_last4") else "계좌이체",
@@ -636,7 +657,7 @@ def audit_result(rid: str | None = None, force: bool = False) -> dict | None:
     led = build(ds, st)
     ledger_file = rec.get("files", {}).get("ledger") or {}
     key = json.dumps([rid, st.get("pair_decisions"), st.get("income_overrides"), st.get("receipt_edits"), st.get("transfer_notes"),
-                      len(st.get("new_receipts", [])), st.get("ledger_csv", {}).get("mapping"), ledger_file.get("name"), ledger_file.get("uploaded")],
+                      [r["id"] for r in st.get("new_receipts", [])], st.get("deleted_receipts"), st.get("ledger_csv", {}).get("mapping"), ledger_file.get("name"), ledger_file.get("uploaded")],
                      sort_keys=True, default=str)
     path = FILES / rid / "audit_run.json"
     if force:
