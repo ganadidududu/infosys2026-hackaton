@@ -50,7 +50,7 @@ function RecordBox({ r, reload }: any) {
               <i style={{ display: 'block', height: '100%', width: `${((r.submitted ?? 0) / (r.required || 7)) * 100}%`, background: 'var(--green)' }} /></div>
           </div>
         )}
-        {done && <div className="xs muted" style={{ textAlign: 'right' }}>감점 {r.total} · 경고 {r.warnings}회{r.pending ? <><br /><span style={{ color: 'var(--amber-ink)' }}>미확정 {r.pending}건</span></> : null}{r.stale ? <><br /><span style={{ color: 'var(--amber-ink)' }}>다시 채점 필요</span></> : null}</div>}
+        {done && (r.pending || r.stale) ? <div className="xs" style={{ textAlign: 'right', color: 'var(--amber-ink)' }}>{r.pending ? <div>미확정 {r.pending}건</div> : null}{r.stale ? <div>다시 채점 필요</div> : null}</div> : null}
       </div>
       {!r.readonly && (
         <button className="btn ghost sm" style={{ position: 'absolute', right: 8, bottom: 8, opacity: 0.4 }} title="삭제"
