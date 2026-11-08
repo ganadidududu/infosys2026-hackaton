@@ -256,13 +256,17 @@ def parse(text: str) -> dict:
     f["vendor"] = re.sub(r"\(?0\d{1,2}\)?[\s-]?\d{3,4}-\d{4}", "", v).strip(" ()")  # 전화번호 떼기
 
     for l, fl in zip(lines, flat):
-        if m := re.search(r"(20\d{1,2})[-./](\d{1,2})[-./](\d{1,2})", l):
+        # 앞뒤가 숫자인 경우(사업자번호 206-86-50913)는 날짜가 아니다. 실제로 있는 날짜만 받는다.
+        if "date" not in f and (m := re.search(r"(?<!\d)(20\d{1,2})[-./](\d{1,2})[-./](\d{1,2})(?!\d)", l)):
+            from datetime import date
             y = m.group(1)
             if len(y) == 3:  # OCR이 한 자리를 빠뜨림(206 → 2026): 올해·작년 중 끝자리가 맞는 해
-                from datetime import date
                 cur = date.today().year
                 y = next((str(c) for c in (cur, cur - 1) if str(c)[0:2] + str(c)[3] == y), str(cur))
-            f.setdefault("date", f"{y}-{int(m.group(2)):02d}-{int(m.group(3)):02d}")
+            try:
+                f["date"] = date(int(y), int(m.group(2)), int(m.group(3))).isoformat()
+            except ValueError:
+                pass
         if m := re.search(r"(\d{3}-\d{2}-\d{5})", l):
             f.setdefault("biz_no", m.group(1))
         if m := re.search(r"할부\s*(\d+)\s*개월", l):

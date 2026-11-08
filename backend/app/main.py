@@ -438,6 +438,11 @@ def receipts():
 @app.patch("/api/receipts/{rid}")
 def receipt_edit(rid: str, body: dict = Body(...)):
     allowed = {"vendor", "date", "amount", "project", "kind", "pay", "has_items", "installment", "points", "invoice", "items"}
+    if "date" in body:
+        try:
+            body["date"] = date.fromisoformat(str(body["date"])).isoformat()
+        except ValueError:
+            raise HTTPException(400, "날짜는 YYYY-MM-DD 형식의 실제 날짜여야 합니다")
     if isinstance(body.get("items"), list):
         body["items"] = [{"name": str(i.get("name", "")).strip(), "qty": int(i.get("qty") or 0), "price": int(i.get("price") or 0)}
                          for i in body["items"] if str(i.get("name", "")).strip()]

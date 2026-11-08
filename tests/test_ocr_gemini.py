@@ -66,6 +66,18 @@ def test_item_discount_becomes_line_under_its_item():
     assert all(c["ok"] for c in ocr.self_check(f))
 
 
+def test_biz_no_is_not_read_as_date():
+    f = ocr.parse("이마트 왕십리점\n사업자번호 206-86-50913\n일시 2026-11-01\n합계 9,340")
+    assert f["date"] == "2026-11-01" and f["biz_no"] == "206-86-50913"
+    assert "date" not in ocr.parse("206-86-50913\n일시 2026-13-45")
+
+
+def test_receipt_edit_rejects_bad_date():
+    client = TestClient(app)
+    assert client.patch("/api/receipts/R001", json={"date": "2026-86-50"}).status_code == 400
+    assert client.get("/api/statement").status_code == 200
+
+
 def test_local_pos_discount_attaches_to_item_above():
     text = "\n".join(["emart 왕십리점", "[구매]2026-11-01 20:11", "02 (뉴)강성사새우(팩)", "2140830099803 9,980 1 9,980",
                       "[델리] 쓱데이 행사 -3,000", "03 싱그림치킨무200g", "8809053273124 680 1 680", "합 계 7,660"])
